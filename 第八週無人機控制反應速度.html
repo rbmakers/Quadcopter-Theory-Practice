@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>無人機姿態控制「反應速度」完整因子理論</title>
+<script>
+window.MathJax={tex:{inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},
+options:{skipHtmlTags:['script','noscript','style','textarea','pre']}};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+:root{--p:#183b56;--s:#2d6287;--a:#2f80b7;--bg:#f5f7fa;--card:#fff;--tx:#273746;--mut:#667788;--bd:#dce3ea;--ok:#2e8b57;--warn:#b7791f;--danger:#c53030}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Noto Sans CJK TC","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;font-size:17px;line-height:1.85}
+.container{max-width:1040px;margin:auto;padding:0 24px}
+.hero{background:linear-gradient(135deg,var(--p),var(--s));color:white;padding:58px 0 42px;text-align:center}
+.hero h1{font-size:2rem;line-height:1.35;margin:0 0 12px}
+.hero p{max-width:840px;margin:8px auto}
+.meta{opacity:.8;font-size:.9rem}
+nav{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--bd);z-index:5}
+.nav{max-width:1040px;margin:auto;padding:10px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nav b{color:var(--p)}
+.nav a{color:var(--mut);text-decoration:none;font-size:.83rem;margin-right:6px}
+.section,.toc{background:var(--card);margin:24px 0;padding:30px;border-radius:12px;box-shadow:0 1px 4px #0000000b}
+.section h2{color:var(--p);border-bottom:2px solid var(--bd);padding-bottom:9px}
+.section h3{color:var(--s);margin-top:28px}
+.eq{background:#eef4f8;border-left:4px solid var(--a);padding:18px 22px;margin:18px 0;overflow:auto}
+.box{padding:15px 18px;border-radius:8px;margin:16px 0}
+.info{background:#edf8ff;border-left:4px solid var(--a)}
+.ok{background:#effaf3;border-left:4px solid var(--ok)}
+.warn{background:#fff8e8;border-left:4px solid var(--warn)}
+.danger{background:#fff0f0;border-left:4px solid var(--danger)}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.93rem}
+th,td{border:1px solid var(--bd);padding:9px 12px;text-align:left}
+th{background:#edf2f7;color:var(--p)}
+tr:nth-child(even){background:#fafbfc}
+code{background:#edf2f7;padding:2px 5px;border-radius:4px}
+.diagram{background:#202b36;color:#e8eef3;padding:20px;border-radius:8px;overflow:auto;font-family:monospace;line-height:1.45;font-size:.88rem}
+.toc a{color:var(--a);text-decoration:none}
+.toc li{margin:4px 0}
+.footer{text-align:center;color:var(--mut);padding:35px;font-size:.88rem}
+.tag{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600}
+.tag.robust{background:#e2f6ea;color:var(--ok)}
+.tag.fragile{background:#fdeaea;color:var(--danger)}
+.tag.gate{background:#fff3d6;color:var(--warn)}
+@media(max-width:650px){body{font-size:16px}.section{padding:20px}.hero h1{font-size:1.45rem}.nav a{display:none}}
+@media print{nav,.toc{display:none}.section{box-shadow:none;break-inside:avoid}body{background:white}}
+</style>
+</head>
+<body>
+<header class="hero"><div class="container">
+<h1>無人機姿態控制「反應速度」<br>完整因子理論</h1>
+<p>從控制理論與無人機飛控系統觀點，將馬達致動器動態、機體慣量槓桿、電流電壓可行域、電池架構四大類因子，整合成一條可直接用於 CURIO 平台的完整因果鏈與選型流程。</p>
+<p class="meta">中原大學電機系・火箭鳥創客倉庫｜CURIO 開放平台｜完整因子理論 V5・2026</p>
+</div></header>
+
+<nav><div class="nav"><b>反應速度理論</b><span>
+<a href="#s1">三層定義</a><a href="#s2">致動器動態</a><a href="#s3">RPM→角加速度</a><a href="#s4">慣量槓桿</a><a href="#s5">Rate Loop</a><a href="#s6">電流電壓可行域</a><a href="#s7">電池架構</a><a href="#s8">因子總表</a><a href="#s9">辨識與流程</a><a href="#s10">結論</a>
+</span></div></nav>
+
+<main class="container">
+
+<section class="toc"><h2>目錄</h2>
+<ol>
+<li><a href="#s1">1. 「反應速度」的嚴謹三層定義</a></li>
+<li><a href="#s2">2. Motor + Propeller 致動器動態完整推導</a></li>
+<li><a href="#s3">3. 從 RPM 到 Thrust、Torque、角加速度：姿態致動增益 $K_\alpha$</a></li>
+<li><a href="#s4">4. 馬達質量對機體轉動慣量的槓桿效應</a></li>
+<li><a href="#s5">5. Rate Loop / Angle Loop 完整閉迴路與頻寬</a></li>
+<li><a href="#s6">6. 電流與電壓可行域：飽和是「快慢」之外的第三維度</a></li>
+<li><a href="#s7">7. 電池架構如何回頭影響反應速度</a></li>
+<li><a href="#s8">8. 影響反應速度的因子總表與穩健度分級</a></li>
+<li><a href="#s9">9. CURIO 平台實驗辨識與設計流程</a></li>
+<li><a href="#s10">10. 結論</a></li>
+<li><a href="#app">附錄：符號表與假設值一覽</a></li>
+</ol>
+</section>
+
+<section class="section" id="s1"><h2>1. 「反應速度」的嚴謹三層定義</h2>
+<p>飛控工程師講的「反應快慢」其實疊了三層不同的動態，必須先拆開才能討論「換馬達／換電池會不會變快」這種問題。</p>
+<h3>1.1 Level 1：致動器動態（Motor + Propeller）</h3>
+<div class="eq">$$G_m(s)=\frac{\delta\omega(s)}{\delta u(s)}\approx\frac{K_m}{1+s\tau_m}$$</div>
+<p>$\tau_m$ 是 PWM/DShot 指令到馬達轉速在某個工作點附近的局部一階時間常數，63.2% step response time 即為 $\tau_m$。</p>
+<h3>1.2 Level 2：機體 Rate Plant</h3>
+<div class="eq">$$I_x\dot p=\tau_x\quad\Longrightarrow\quad G_{body}(s)=\frac{p(s)}{\tau_x(s)}=\frac1{I_xs}$$</div>
+<p>$I_x$（機體對 Roll 軸轉動慣量）不是延遲，而是「扭矩→角加速度」這個環節的增益倒數；$I_x$ 越大，同樣扭矩換到的角加速度越小。</p>
+<h3>1.3 Level 3：Rate 閉迴路頻寬——唯一真正該被稱為「反應速度」的量</h3>
+<div class="eq">$$L(s)=C_{rate}(s)\,G_m(s)\,G_{body}(s),\qquad T_{rate}(s)=\frac{L(s)}{1+L(s)}$$</div>
+<div class="box danger"><b>控制理論上的正確說法（修正 v2 版的過度簡化）：</b>致動器極點 $1/\tau_m$ 越低，phase lag 出現得越早，因此在維持足夠相位裕度（phase margin）的前提下，可達成的 crossover frequency（近似等於閉迴路頻寬）通常越受限——但它不是「任何控制器設計都絕對不能突破」的數學硬上限。真正的頻寬要由 $T_{rate}(s)$ 的 −3 dB 點與穩定裕度共同決定，而不能只看 $1/(2\pi\tau_m)$。</div>
+<p>因此本文後面所有「哪個方案比較快」的討論，最終都必須落回第 5 節的 $T_{rate}(j\omega)$，而不是停在 $\tau_m$ 或 $I_{body}$ 任何單一環節。</p>
+</section>
+
+<section class="section" id="s2"><h2>2. Motor + Propeller 致動器動態完整推導</h2>
+<h3>2.1 電氣子系統</h3>
+<div class="eq">$$V=L\frac{di}{dt}+Ri+K_e\omega$$</div>
+<p>空心杯（coreless）微型馬達電感典型 $10$–$50\ \mu H$、電阻 $0.3$–$0.6\ \Omega$，電氣時間常數 $\tau_e=L/R\sim75\ \mu s$，比機械時間常數（毫秒級）快一到兩個數量級，且落在單一 PWM/DShot 更新週期（125–1000 μs）之內即已收斂。因此後續採<strong>準穩態電氣假設</strong> $L\,di/dt\approx0$，只保留機械動態——這一步在三份文件中一致，予以保留。</p>
+<h3>2.2 機械子系統與平衡點線性化</h3>
+<div class="eq">$$J_r\dot\omega=K_t(i-I_0)-k_Q\omega^2,\qquad i=\frac{V-K_e\omega}{R}$$
+$$J_r\dot\omega=a-b\omega-k_Q\omega^2,\qquad a=K_t\!\left(\frac VR-I_0\right),\ b=\frac{K_tK_e}{R}\approx\frac{K_t^2}{R}$$</div>
+<p>令 $\dot\omega=0$ 得平衡點 $\omega_h$（穩態轉速）；在 $\omega_h$ 附近線性化 $\omega=\omega_h+\delta\omega$：</p>
+<div class="eq">$$J_r\dot{\delta\omega}=-(b+2k_Q\omega_h)\,\delta\omega
+\quad\Longrightarrow\quad
+\boxed{\tau_m=\dfrac{J_r}{b_e+b_{aero}}},\qquad b_e=\dfrac{K_t^2}{R},\ \ b_{aero}=2k_Q\omega_h$$</div>
+<p>物理意義：$b_e$ 是馬達本身的電磁阻尼（與負載無關的常數，電壓高、電阻小、$K_t$ 大則 $b_e$ 大）；$b_{aero}$ 是槳葉氣動阻尼，隨轉速升高而增加——因此<strong>機體越重（需要越高 $\omega_h$）氣動阻尼天然越大，$\tau_m$ 反而有變小（變快）的傾向</strong>，這是後面「不能只憑 KV 判斷快慢」的根源。</p>
+<h3>2.3 案例教訓：KV 數值一致性與交叉重量點</h3>
+<div class="box warn"><b>數值一致性提醒（沿用 v3 的修正）：</b>若某馬達標示空載轉速 $N_0=55{,}000$ rpm @ 3.7 V，其等效 $KV=N_0/V\approx14.9$ kRPM/V，而非文件初版誤植的 13.7 KV。任何選型計算都應先用同一測試電壓反推 KV 做交叉核對，避免型錄標稱值與實測換算值不一致。</div>
+<p>用兩顆（部分參數為假設值、需實測校準的）馬達 A、B 代入 $\tau_m(m)=J_r/(b_e+2k_Q\sqrt{mg/4k_T})$，可解出「交叉重量點」$m^*$：</p>
+<div class="eq">$$x^*=\frac{J_Ab_B-J_Bb_A}{2k_Q(J_B-J_A)},\qquad m^*=\frac{4k_Tx^{*2}}{g}$$</div>
+<table><tr><th>機體總重</th><th>$\omega_h$ (rad/s)</th><th>$\tau_{m,A}$ (ms)</th><th>$\tau_{m,B}$ (ms)</th><th>較快者</th></tr>
+<tr><td>10 g</td><td>1412</td><td>5.33</td><td>5.65</td><td>A</td></tr>
+<tr><td>30 g</td><td>2436</td><td>4.92</td><td>4.94</td><td>A（微幅）</td></tr>
+<tr><td>32.3 g（交叉點）</td><td>2527</td><td>4.89</td><td>4.89</td><td>相等</td></tr>
+<tr><td>55 g</td><td>3298</td><td>4.63</td><td>4.48</td><td>B</td></tr>
+</table>
+<div class="box danger"><b>誠實的結論：</b>只看馬達本體 $\tau_m$，方向完全取決於難以從型錄取得、必須實測的 $J_r,R,K_t$ 相對大小，兩種方向理論上都可能發生。<strong>它不能單獨解釋「大馬達適合重機、小馬達適合輕機」這類經驗法則</strong>——真正穩健、不依賴精確電機參數的機制在第 4 節。</p></div>
+</section>
+
+<section class="section" id="s3"><h2>3. 從 RPM 到 Thrust、Torque、角加速度：姿態致動增益 $K_\alpha$</h2>
+<p>這是把「馬達轉多快」正式接到「機身轉多快」的關鍵環節，也是 v3 相對初版最重要的新增章節。</p>
+<div class="eq">$$T=k_T\omega^2\ \Rightarrow\ \delta T=2k_T\omega_h\,\delta\omega\qquad(\text{thrust sensitivity }K_{T\omega}=2k_T\omega_h)$$</div>
+<p>X 型四軸、Roll 軸、有效力臂 $l=r\sin45^\circ$：</p>
+<div class="eq">$$\delta\tau_x\approx2lk_T\omega_h\,\delta\omega_{diff},\qquad I_x\dot p=\tau_x
+\ \Longrightarrow\
+\boxed{K_\alpha=\frac{2lk_T\omega_h}{I_x}}$$</div>
+<p>代入 hover 條件 $4k_T\omega_h^2=mg\Rightarrow\omega_h=\sqrt{mg/4k_T}$，並假設幾何相似機架 $I_x\approx k_mm$：</p>
+<div class="eq">$$K_\alpha=\frac{l\sqrt{k_Tmg}}{I_x}\ \Longrightarrow\ \boxed{K_\alpha\propto\frac1{\sqrt m}}$$</div>
+<p>因此「機體越重，姿態角加速度能力越差」有直接的物理來源，比單獨引用 $\omega_n\propto1/\sqrt{I_{body}}$ 更完整——它同時包含了 hover RPM 隨重量上升、進而放大 thrust sensitivity 的效果。完整 actuator-to-rate 模型：</p>
+<div class="eq">$$\boxed{G_{\omega\to p}(s)=\frac{K_m}{1+s\tau_m}\cdot\frac{2lk_T\omega_h}{I_xs}}$$</div>
+<div class="diagram">
+PWM/DShot Command
+      │
+      ▼
+┌───────────────────────┐
+│ Motor + Propeller     │   Level 1：致動器動態
+│ K_m / (1 + s·τ_m)     │   （馬達＋槳葉一階小信號模型）
+└──────────┬────────────┘
+           │ δω
+           ▼
+┌───────────────────────┐
+│ Thrust:  δT=2kT·ωh·δω │
+│ Torque:  δτ = l·δTdiff│
+└──────────┬────────────┘
+           │ δτ
+           ▼
+┌───────────────────────┐
+│ Body:  1 / (Ix·s)     │   Level 2：機體 plant（純積分）
+└──────────┬────────────┘
+           │
+           ▼
+       Roll Rate p ──► Rate PID C_rate(s) ──► 回到 PWM 指令（閉迴路）
+</div>
+</section>
+
+<section class="section" id="s4"><h2>4. 馬達質量對機體轉動慣量的槓桿效應</h2>
+<div class="eq">$$I_{motor,i}=I_{cm,i}+m_{motor}d_i^2\approx m_{motor}d_i^2,\qquad d=r_{arm}\sin45^\circ$$
+$$I_{motors}\approx2\,m_{motor}\,r_{arm}^2$$</div>
+<p>對幾何相似機架族系（同機架、同力臂長，只改變總重 $m$），$I_{body}(m)\approx k\,m$，$k=I_{body}/m$ 為由機架幾何決定的比慣量常數：</p>
+<div class="eq">$$\Delta I_{motors}=2\,\Delta m\,r_{arm}^2\ \Longrightarrow\ \boxed{\frac{\Delta I_{body}}{I_{body}}\approx\frac{2\,\Delta m\,r_{arm}^2}{k\,m}\propto\frac1m}$$</div>
+<div class="box ok"><b>核心定理（三份文件中最穩健的一條結論）：</b>相同的馬達質量差 $\Delta m$，對輕機體的相對慣量衝擊與機體總重成反比——機體越輕，1 g 的差異被放大得越嚴重。<strong>這是唯一不需要精確電機參數（$R,K_t,J_r$）、方向必然成立的機制</strong>，因此應作為選型時優先檢查的第一穩健準則。</div>
+<table><tr><th>機體總重</th><th>$I_{body}=k\cdot m$（示範假設 $k\approx2.0\times10^{-4}\,\text{m}^2$）</th><th>$\Delta I/I$（$\Delta m=1$g，$r_{arm}=45$mm）</th><th>局部二階模型下 $\Delta\omega_n/\omega_n$</th></tr>
+<tr><td>55 g</td><td>$1.10\times10^{-5}$ kg·m²</td><td>36.8%</td><td>≈ −18.4%</td></tr>
+<tr><td>30 g</td><td>$6.00\times10^{-6}$ kg·m²</td><td>67.5%</td><td>≈ −33.8%</td></tr>
+</table>
+<div class="box warn"><b>但要小心過度延伸：</b>$\Delta\omega_n/\omega_n\approx-\tfrac12\Delta I/I$ 只是局部二階模型的一階線性化敏感度估算，不是完整 $T_{rate}(s)$ 的精確頻寬變化量；真正精確的答案仍需回到第 5 節的完整閉迴路求解。</div>
+</section>
+
+<section class="section" id="s5"><h2>5. Rate Loop / Angle Loop 完整閉迴路與頻寬</h2>
+<p>CURIO 採外角度 P、內角速度 PID 的串級架構：</p>
+<div class="eq">$$p_{cmd}=K_{P,\phi}(\phi_{cmd}-\phi),\qquad
+C_{rate}(s)=K_p+\frac{K_i}{s}+\frac{K_ds}{1+sT_f}$$
+$$\boxed{L_{rate}(s)=C_{rate}(s)\,\frac{K_m\cdot2lk_T\omega_h}{I_xs(1+s\tau_m)}},\qquad
+T_{rate}(s)=\frac{L_{rate}(s)}{1+L_{rate}(s)}$$</div>
+<h3>5.1 為什麼不能只靠拉高 PID Gain 換取「反應更快」</h3>
+<ul>
+<li>$I_x$ 增加 → plant 增益 $2lk_T\omega_h/I_x$ 下降，同樣 $K_p$ 換到的 crossover 自然降低；</li>
+<li>$\tau_m$ 增加 → 致動器極點提早貢獻相位落後，逼近 crossover 時相位裕度變差；</li>
+<li>$M_+,M_-$（見第 6 節）太小 → 大幅指令時直接飽和，PID 增益再高也沒有實體動作空間；</li>
+<li>拉高 $K_p$ 雖能提高 crossover，但可能吃掉相位裕度、逼近不穩定；拉高 $K_d$ 可補阻尼，但受限於陀螺儀雜訊與濾波器延遲。</li>
+</ul>
+<div class="box info"><b>因此 AutoTune／PID 調參的正確被控對象，是「致動器 $G_m$ + 機體 $G_{body}$ + 感測器 + 濾波器」整條 plant，而不是把馬達單獨拿出來調。</b></div>
+<h3>5.2 Angle Loop</h3>
+<div class="eq">$$T_\phi(s)=\frac{K_{P,\phi}\,T_{rate}(s)/s}{1+K_{P,\phi}\,T_{rate}(s)/s}$$</div>
+<p>外環角度迴路頻寬應顯著低於內環 Rate Loop，實際分離比例由 CURIO 上實測的相位裕度、雜訊水準與機體回應共同決定，不宜套用固定倍數。</p>
+</section>
+
+<section class="section" id="s6"><h2>6. 電流與電壓可行域：飽和是「快慢」之外的第三維度</h2>
+<p>就算 $\tau_m$ 很小、$K_\alpha$ 很大，只要工作點已經逼近電流或電壓上限，姿態修正就沒有實體餘裕——這是與「快慢」性質不同的<strong>硬性可行域邊界</strong>。</p>
+<h3>6.1 連續電流可行域</h3>
+<div class="eq">$$I(\omega)=\frac{k_Q\omega^2+b\omega}{K_t}+I_0\ \le\ \eta_I\,I_{stall}$$</div>
+<p>$\eta_I$ 是設計保守係數（非普適物理定律），應由線圈溫升、電刷／軸承壽命、散熱與 duty cycle 實測校準；教學上常見的初期假設為 30%。</p>
+<h3>6.2 電壓可行域與 PWM 餘裕</h3>
+<div class="eq">$$V_{req}(\omega)=K_e\omega+RI(\omega)\ <\ V_{available}$$</div>
+<p>若 hover 所需電壓已經很接近電池可提供電壓上限，PWM duty 逼近 100%，控制器就沒有向上修正的餘裕——這對 1S、甚至低電壓工作區間的 2S 系統都同樣重要。</p>
+<h3>6.3 上下控制餘裕 $M_+,M_-$</h3>
+<div class="eq">$$M_+=\frac{\omega_{max}-\omega_h}{\omega_h},\qquad M_-=\frac{\omega_h-\omega_{min}}{\omega_h}$$
+$$\text{Control Authority}=f(\tau_m,I_{body},k_T,l,\omega_h,M_+,M_-,V_{battery},I_{max})$$</div>
+<p>真正的姿態修正能力（能不能完成大幅度姿態指令，而不是「小信號下多快」）由這一整組變數共同決定，必須與第 5 節的頻寬分析分開檢查，兩者都合格才是可用的方案。</p>
+</section>
+
+<section class="section" id="s7"><h2>7. 電池架構如何回頭影響反應速度</h2>
+<p>V4.2 討論的「CL-8520 13.7KV+1S vs CL-8520 7.4KV/6.4KV+2S(LiHV)」問題，本質上就是在同一支 55 mm 槳、同一 hover 推力（同一 $\omega_h$）的前提下，改變 $K_t$（透過改變 KV）與 $V_{battery}$，藉此重新分配 motor-side 電流與 battery-side 電流，因此可以直接掛進第 6 節的可行域框架，而不是獨立議題。</p>
+<h3>7.1 Connector 電流限制的是 motor-side，不是 battery-side</h3>
+<div class="diagram">
+Battery ── I_battery ──► Driver/ESC ── I_motor ──► Motor Connector (額定 2A) ──► Motor
+</div>
+<p>Connector 的 continuous rating 限制的是 $I_{motor}$，架構上與電池電壓、電池 C-rate 無關。提高電池電壓（1S→2S）不會直接解除這個限制；真正能降低 $I_{motor}$ 的是提高 $K_t$（即降低 KV）：</p>
+<div class="eq">$$K_t=\frac{60}{2\pi\,KV},\qquad \tau_{motor}\approx K_tI\ \Longrightarrow\ I\approx\frac{\tau_{motor}}{K_t}$$</div>
+<p>同一 torque 需求下，$K_t$ 越大（KV 越低）所需 $I_{motor}$ 越小，這正是「低 KV＋高電壓」設計的物理基礎，也是 6.1 節電流可行域中對 $M_+$（可用的向上電流餘裕）最直接的槓桿。</p>
+<h3>7.2 同 RPM、同推力下，motor current 與 battery current 為什麼不同</h3>
+<p>同槳、同 $\omega_h$、同推力 $\Rightarrow$ 機械功率 $P_{prop}=Q\omega$ 大致相同 $\Rightarrow$ 電功率 $P_{electrical}\approx P_{prop}/\eta$ 也大致相同。但：</p>
+<div class="eq">$$I_{battery}\approx\frac{P_{electrical}}{V_{battery}}\ \Longrightarrow\ I_{2S,battery}\approx\tfrac12\,I_{1S,battery}$$</div>
+<p>這是<strong>電池端</strong>電流減半，來自電壓升高、功率不變；而 <strong>motor 端</strong>電流是否降低，主要由 $K_t$（KV）而非電池電壓決定——兩者是兩件不同的事，V4.2 討論中特別澄清了這一點，值得保留為設計準則：不要把「2S 讓 battery current 減半」誤當成「2S 讓 motor connector 電流也減半」。</p>
+<h3>7.3 電池滿電電壓與馬達耐壓：可行域的另一條硬邊界</h3>
+<p>LiPo 滿電 $2\times4.2=8.4$ V；LiHV 滿電 $2\times4.35=8.7$ V，兩者都可能超過型錄標示的馬達工作電壓上限（例如 6–8 V）。這屬於 6.2 節 $V_{req}(\omega)<V_{available}$ 可行域的邊界情形，差別在於這裡限制的是<strong>硬體耐壓上限</strong>而非「餘裕不足」——超過即可能損壞馬達，優先順序高於頻寬與電流餘裕的討論。</p>
+<h3>7.4 電池內阻與 Voltage Sag：影響 $V_{available}$ 而非 $\tau_m$</h3>
+<div class="eq">$$\Delta V_{sag}=I_{battery}\cdot R_{DCIR}$$</div>
+<p>同功率下 2S 的 battery current 較低，因此同一內阻下 sag 也較小，等效提高了 6.2 節的 $V_{available}$、進而提高 $M_+$；但這是透過可行域間接幫助控制餘裕，不是直接讓 $\tau_m$ 變小。高 C-rate（例如 95C）電池的低內阻優勢，作用機制相同——都是抬高 $V_{available}$，不是改變致動器動態本身。</p>
+<h3>7.5 電池重量：直接回饋進第 4 節的慣量槓桿與第 3 節的 $\omega_h$</h3>
+<p>2S 電池通常比同容量 1S 重，若整機 AUW 因此增加，會同時觸發兩條回饋路徑：</p>
+<div class="eq">$$\text{AUW}\uparrow\ \Rightarrow\ \omega_h=\sqrt{\frac{mg}{4k_T}}\uparrow\ (\text{第2節，}K_\alpha\text{ 分子上升})
+\qquad\text{且}\qquad
+I_{body}\uparrow\ (\text{第3節分母上升，}K_\alpha\text{ 同時被拉低})$$</div>
+<p>兩者方向相反、必須合併評估：電池變重同時墊高了 $\omega_h$（可能提升 thrust sensitivity）與 $I_{body}$（拉低角加速度增益），淨效果需要代入完整 $K_\alpha=l\sqrt{k_Tmg}/I_x$ 重新計算，不能只看電流餘裕變好就直接判定「反應更快」。</p>
+<div class="box danger"><b>整合結論：</b>低 KV＋高電壓（2S/2S LiHV）方案對「反應速度」的淨影響，必須同時檢查——(1) $K_t$ 上升是否真的降低了 hover 附近的 $I_{motor}$（第7.1節）；(2) 電壓上限與滿電電壓是否相容（第7.3節）；(3) 電池重量是否推高 $I_{body}$ 並壓低 $K_\alpha$（第7.5節）；(4) 最終仍要代入第 5 節完整 $T_{rate}(s)$ 才能確認頻寬是否真的提升。V4.2 目前只完成了 (1)(2) 的代數分析，(3)(4) 是下一輪必須補上的部分。</div>
+</section>
+
+<section class="section" id="s8"><h2>8. 影響反應速度的因子總表與穩健度分級</h2>
+<table>
+<tr><th>機制</th><th>作用位置</th><th>方向是否穩健</th><th>是否需要精確電機參數</th><th>典型影響量級</th></tr>
+<tr><td>① 馬達質量→機體慣量槓桿（第3節）</td><td>$I_{body}$，進而 $K_\alpha$</td><td><span class="tag robust">穩健</span> 機體越輕、質量差衝擊必然越大</td><td>否，只需質量差與力臂長</td><td>頻寬敏感度 15–40%</td></tr>
+<tr><td>② 馬達本體小信號動態（第1節）</td><td>$\tau_m$，影響相位裕度</td><td><span class="tag fragile">不穩健</span> 方向依賴 $J_r,R,K_t$ 相對大小，須實測</td><td>是</td><td>時間常數變化約 5–15%</td></tr>
+<tr><td>③ 電流／電壓可行域（第5節）</td><td>$M_+,M_-$，飽和門檻</td><td><span class="tag gate">門檻效應</span> 非連續影響，不合格則直接飽和</td><td>是</td><td>低於門檻時反應趨近失去修正能力</td></tr>
+<tr><td>④ 低 KV／高電壓 motor-side 電流（第7.1節）</td><td>$K_t$，$M_+$ 餘裕</td><td><span class="tag robust">方向穩健</span>（$K_t\uparrow\Rightarrow I_{motor}\downarrow$），但幅度需實測 $R,I_0$ 確認</td><td>部分</td><td>相同 torque 下電流可降 30–50%</td></tr>
+<tr><td>⑤ 電池電壓上限／滿電電壓（第7.3節）</td><td>$V_{available}$ 硬邊界</td><td><span class="tag gate">門檻效應</span></td><td>否，查規格即可</td><td>超限即不可行，非連續</td></tr>
+<tr><td>⑥ 電池內阻與 C-rate（第7.4節）</td><td>$V_{available}$（sag）</td><td><span class="tag robust">方向穩健</span> 低內阻/高C-rate必然降低 sag</td><td>否</td><td>sag 可差 2 倍以上</td></tr>
+<tr><td>⑦ 電池／方案總重（第7.5節）</td><td>同時影響 $\omega_h$ 與 $I_{body}$</td><td><span class="tag fragile">方向不穩健</span> 兩條路徑效果相反，需代入 $K_\alpha$ 計算</td><td>否（但需秤重）</td><td>視增重比例，可正可負</td></tr>
+<tr><td>⑧ 控制器設計（$K_p,K_i,K_d,T_f$）（第4節）</td><td>$L(s)$ crossover / phase margin</td><td>受①–⑦共同限制，本身是可調變數而非物理常數</td><td>否（但需配合 plant 實測調整）</td><td>在可行域內可顯著改變 rise time／overshoot</td></tr>
+</table>
+<div class="box info"><b>選型優先順序建議：</b>
+<ol>
+<li>先檢查 ⑤（電壓硬邊界）與 ③（電流/電壓可行域）：不滿足者直接淘汰，與「快不快」無關；</li>
+<li>機體越輕，越優先看 ①（慣量槓桿）：判斷最可靠、不需複雜電機參數；</li>
+<li>再看 ④⑥（低 KV／電池內阻對電流餘裕的貢獻）與 ⑦（總重回饋）合併評估淨效果；</li>
+<li>機體越重、可行域越寬裕，越應把重心放回 ②（馬達本體動態）與 ⑧（控制器調校），並用第 9 節方法實測驗證；</li>
+<li>最終判準只能是完整 $T_{rate}(j\omega)$ 的頻寬與穩定裕度，任何單一因子的改善都不能單獨宣稱「反應變快」。</li>
+</ol>
+</div>
+</section>
+
+<section class="section" id="s9"><h2>9. CURIO 平台實驗辨識與設計流程</h2>
+<h3>9.1 建議辨識順序</h3>
+<div class="box ok">Motor PWM→RPM step response（$K_m,\tau_m(\omega)$）→ Thrust/Torque 係數 $k_T,k_Q$（同一支 55 mm 槳實測，勿沿用其他槳的係數）→ 機體慣量 $I_x,I_y,I_z$（CAD 或 bifilar 擺測）→ 電流/電壓可行域與 $M_+,M_-$ → 建立完整 Rate Plant → PID synthesis／relay-feedback AutoTune → 實測 $T_{rate}(j\omega)$ 驗證。</div>
+<h3>9.2 各步驟要點</h3>
+<ul>
+<li><b>Test A（PWM→RPM step）：</b>在多個工作點（如 30/40/50/60% command）做小幅 step，量測 $t_{10},t_{50},t_{63.2},t_{90}$ 與穩態增益 $K_m$，確認 $\tau_m(\omega)$ 是否隨轉速改變。</li>
+<li><b>Test B（coast-down）：</b>須明確記錄斷電後 MOSFET 狀態（floating 或 short-brake），因為兩者退化方程不同，直接影響 $J_r$ 的辨識結果。</li>
+<li><b>Test C（thrust stand）：</b>對實際使用的 55 mm 二葉槳直接量測 $k_T,k_Q$。</li>
+<li><b>Test D（慣量量測）：</b>30–60 g 超輕機體對 $\Delta m$ 特別敏感，此步驟精度直接決定第 4、8 節結論的可信度。</li>
+<li><b>Test E（Rate Loop 頻率響應）：</b>在 CURIO 上注入小幅 rate command 擾動，直接量出 $T_{rate}(j\omega)$ 的 crossover、相位裕度與 −3 dB 頻寬——這是唯一能真正回答「這個方案是否比較快」的量測，其餘步驟都是為了建立可預測的模型。</li>
+<li><b>電池／可行域驗證：</b>量測實際 hover 電流、電壓 sag、以及是否已超過馬達耐壓與 connector 額定值，對照第 6、7 節的邊界條件。</li>
+</ul>
+</section>
+
+<section class="section" id="s10"><h2>10. 結論</h2>
+<ul>
+<li><strong>「反應速度」不是單一物理量</strong>，而是致動器動態 $\tau_m$、機體 plant 增益 $1/I_x$（或 $K_\alpha$）、控制器設計 $C_{rate}(s)$ 三者疊加後的閉迴路頻寬 $T_{rate}(j\omega)$，必須整體求解，不能用任一環節的局部指標（KV、$\tau_m$、電流餘裕、慣量）單獨下結論。</li>
+<li><strong>唯一穩健、不需精確電機參數即可判斷方向</strong>的機制，是馬達／電池質量透過平行軸定理放大機體轉動慣量的槓桿效應，且此衝擊與機體總重成反比——機體越輕，選型時越該優先看重量。</li>
+<li><strong>低 KV＋高電壓（2S/2S LiHV）</strong>能有效降低 motor-side 電流、放寬電流可行域，但這個優勢會被（a）電壓硬上限、（b）電池增重推高 $I_{body}$ 與 $\omega_h$ 兩件事部分抵銷，淨效果必須代入完整 $K_\alpha$ 與 $T_{rate}(s)$ 才能確認，不可直接視為「反應更快」的充分條件。</li>
+<li><strong>電流／電壓可行域是與快慢性質不同的硬性門檻</strong>：不滿足時不是「變慢」，而是直接飽和、失去修正能力，選型時應優先排除。</li>
+<li>最終選型判準應為：<div class="eq">$$\text{Choose configuration}=\arg\max\big[\text{robust Rate-loop bandwidth \& phase margin}\big]\ \text{subject to}\ I_h<I_{cont,max},\ V_h<V_{available},\ M_+,M_->\text{required margin}$$</div></li>
+<li>所有型錄標稱 KV／電流／電壓數字都應先做交叉核對（如第 2.3 節），並儘可能用第 9 節方法在 CURIO 平台上實測 $J_r,R,K_t,k_T,k_Q,I_x,I_y,I_z$，而非僅依賴假設值進行選型決策。</li>
+</ul>
+</section>
+
+<section class="section" id="app"><h2>附錄：符號表與假設值一覽</h2>
+<table>
+<tr><th>符號</th><th>物理意義</th><th>SI 單位</th></tr>
+<tr><td>$R,L$</td><td>馬達線圈電阻、電感</td><td>Ω, H</td></tr>
+<tr><td>$K_t,K_e$</td><td>轉矩常數、反電動勢常數（SI 制下數值相等）</td><td>N·m/A, V·s/rad</td></tr>
+<tr><td>$J_r=J_{rotor}+J_{prop}$</td><td>轉子＋槳葉合併轉動慣量</td><td>kg·m²</td></tr>
+<tr><td>$k_T,k_Q$</td><td>推力、扭矩係數</td><td>N·s²/rad², N·m·s²/rad²</td></tr>
+<tr><td>$b_e=K_t^2/R$</td><td>馬達電磁阻尼係數</td><td>N·m·s/rad</td></tr>
+<tr><td>$b_{aero}=2k_Q\omega_h$</td><td>槳葉氣動阻尼（平衡點線性化）</td><td>N·m·s/rad</td></tr>
+<tr><td>$\tau_m$</td><td>致動器局部小信號時間常數</td><td>s</td></tr>
+<tr><td>$I_x,I_y,I_z$</td><td>機體 Roll/Pitch/Yaw 轉動慣量</td><td>kg·m²</td></tr>
+<tr><td>$K_\alpha=2lk_T\omega_h/I_x$</td><td>姿態致動增益（差動 RPM→角加速度）</td><td>(rad/s²)/(rad/s)</td></tr>
+<tr><td>$M_+,M_-$</td><td>上下轉速控制餘裕</td><td>無因次</td></tr>
+<tr><td>$\eta_I$</td><td>連續電流設計保守係數</td><td>無因次</td></tr>
+<tr><td>$I_{motor},I_{battery}$</td><td>馬達端／電池端電流（connector 限制前者）</td><td>A</td></tr>
+<tr><td>$V_{available}$</td><td>扣除 sag 後實際可用電壓</td><td>V</td></tr>
+</table>
+<div class="box warn"><b>本文沿用之假設值（未經實測，僅供教學方法示範）：</b>
+CL-8020 之 $R,I_0,I_{stall},J_r$；兩顆比較馬達的 $J_r$；馬達質量差 $\Delta m=1$ g；機架比慣量 $k\approx2.0\times10^{-4}$ m²、$r_{arm}=45$ mm；電流可行域保守係數 $\eta_I=0.30$。V4.2 中 CL-8520 6.4KV/7.4KV 之 2S/2S LiHV 耐壓可行性、BetaFPV LAVA II 之 DCIR 實測值，於本文撰寫時仍待原廠或實測確認，見第 7.3、7.4 節之對應邊界條件。</div>
+</section>
+
+</main>
+<div class="footer">完整因子理論 V5｜CURIO 平台反應速度分析與選型方法｜中原大學電機系・火箭鳥創客倉庫・CURIO 平台｜標示「假設」之數值僅供教學示範，實際選型請以第 9 節方法實測後之數據為準。</div>
+</body>
+</html>
