@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Betaflight 調度器深度分析</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: #0b1120;
+    color: #e2e8f0;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+  h1 {
+    font-size: 28px; color: #38bdf8; text-align: center; margin-bottom: 8px;
+    border-bottom: 2px solid #1e293b; padding-bottom: 16px;
+  }
+  .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 32px; }
+  h2 {
+    font-size: 20px; color: #38bdf8; margin: 36px 0 16px;
+    border-left: 4px solid #38bdf8; padding-left: 12px;
+  }
+  h3 {
+    font-size: 17px; color: #fbbf24; margin: 24px 0 12px;
+  }
+  .card {
+    background: #151e32; border: 1px solid #1e293b; border-radius: 12px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .highlight { color: #fbbf24; font-weight: 700; }
+  .code {
+    font-family: "Fira Code", "Consolas", "Monaco", monospace;
+    background: #0f172a; padding: 2px 8px; border-radius: 4px;
+    font-size: 13px; color: #a5b4fc;
+  }
+  .code-block {
+    font-family: "Fira Code", "Consolas", "Monaco", monospace;
+    background: #0f172a; padding: 16px; border-radius: 8px;
+    font-size: 13px; color: #cbd5e1; overflow-x: auto;
+    border: 1px solid #1e293b; line-height: 1.6; margin: 12px 0;
+  }
+  .code-block .comment { color: #64748b; }
+  .code-block .keyword { color: #c084fc; }
+  .code-block .func { color: #38bdf8; }
+  .code-block .var { color: #fbbf24; }
+  .code-block .num { color: #f472b6; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 12px 0 12px 24px; }
+  li { margin-bottom: 8px; }
+  .note {
+    background: #1e293b; border-left: 4px solid #fbbf24;
+    padding: 12px 16px; border-radius: 0 8px 8px 0;
+    font-size: 14px; color: #cbd5e1; margin: 16px 0;
+  }
+  .two-col {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  }
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; }
+    .container { padding: 16px; }
+    h1 { font-size: 22px; }
+  }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0;
+  }
+  th {
+    background: #1e293b; color: #f1f5f9; padding: 10px 12px;
+    text-align: left; border-bottom: 2px solid #334155;
+  }
+  td {
+    padding: 10px 12px; border-bottom: 1px solid #1e293b;
+    vertical-align: top;
+  }
+  tr:hover { background: #1a2438; }
+  .tag {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .tag-rt { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
+  .tag-high { background: #7c2d12; color: #fdba74; border: 1px solid #ea580c; }
+  .tag-med { background: #713f12; color: #fde047; border: 1px solid #ca8a04; }
+  .tag-low { background: #14532d; color: #86efac; border: 1px solid #16a34a; }
+  .tag-lowest { background: #1e293b; color: #94a3b8; border: 1px solid #475569; }
+  .svg-wrap {
+    background: #0f172a; border-radius: 10px; border: 1px solid #1e293b;
+    padding: 16px; overflow-x: auto; margin: 16px 0; text-align: center;
+  }
+  .svg-wrap svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px;
+    margin-bottom: 12px; justify-content: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-color { width: 16px; height: 16px; border-radius: 4px; }
+  .footer {
+    text-align: center; margin-top: 40px; padding-top: 20px;
+    border-top: 1px solid #1e293b; color: #64748b; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Betaflight 調度器深度分析</h1>
+<p class="subtitle">單棧協作式調度器 · 雙域分離 · 動態優先級准入控制</p>
+
+<!-- 第一章：架構本質 -->
+<h2>一、架構定性：確定性協作式調度器</h2>
+<div class="card">
+  <p>Betaflight 的 <span class="code">scheduler()</span> 並非 RTOS，也不是單純的 <span class="code">while(true)</span> 加中斷。它是一個<span class="highlight">單堆疊、零上下文切換、時間觸發與事件觸發混合</span>的專用調度器。所有任務都是透過函式指標直接呼叫，沒有任務控制塊 (TCB)、沒有堆疊切換、沒有 PendSV 異常。</p>
+  <p>這意味著：</p>
+  <ul>
+    <li><strong>任務切換成本 ≈ 函式呼叫成本</strong>（數個 CPU 週期），而非 RTOS 的數十至數百週期。</li>
+    <li><strong>無優先級反轉、無死鎖</strong>（因為不存在搶佔，也不存在互斥鎖）。</li>
+    <li><strong>記憶體佔用極小</strong>（無需為每個任務配置私有堆疊）。</li>
+  </ul>
+</div>
+
+<!-- 第二章：雙域調度 -->
+<h2>二、雙域調度：實時域與非實時域的分離</h2>
+
+<h3>2.1 實時域 (Real-time Domain)</h3>
+<div class="card">
+  <p>由 <span class="code">TASK_GYRO</span>、<span class="code">TASK_FILTER</span>、<span class="code">TASK_PID</span> 組成嚴格順序鏈，對應 <span class="code">TASK_PRIORITY_REALTIME</span>。</p>
+  <p class="highlight">同步機制並非中斷觸發，而是輪詢鎖相：</p>
+  <div class="code-block">
+<span class="comment">// 計算下一個理論上應該執行 Gyro 的時間點</span>
+<span class="var">nextTargetCycles</span> = <span class="var">lastTargetCycles</span> + <span class="var">desiredPeriodCycles</span>;
+<span class="var">schedLoopRemainingCycles</span> = <span class="func">cmpTimeCycles</span>(<span class="var">nextTargetCycles</span>, <span class="var">nowCycles</span>);
+
+<span class="comment">// 當接近時間邊界時，主動輪詢等待（busy-wait）</span>
+<span class="keyword">while</span> (<span class="var">schedLoopRemainingCycles</span> > <span class="num">0</span>) {
+    <span class="var">nowCycles</span> = <span class="func">getCycleCounter</span>();
+    <span class="var">schedLoopRemainingCycles</span> = <span class="func">cmpTimeCycles</span>(<span class="var">nextTargetCycles</span>, <span class="var">nowCycles</span>);
+}
+
+<span class="comment">// 精確到達時間點後，立即執行實時鏈</span>
+<span class="func">schedulerExecuteTask</span>(<span class="var">gyroTask</span>, <span class="var">currentTimeUs</span>);
+<span class="keyword">if</span> (<span class="func">gyroFilterReady</span>()) <span class="func">schedulerExecuteTask</span>(<span class="func">getTask</span>(<span class="var">TASK_FILTER</span>), <span class="var">currentTimeUs</span>);
+<span class="keyword">if</span> (<span class="func">pidLoopReady</span>())    <span class="func">schedulerExecuteTask</span>(<span class="func">getTask</span>(<span class="var">TASK_PID</span>), <span class="var">currentTimeUs</span>);
+  </div>
+  <p>這裡的 <span class="code">while</span> 輪詢是刻意設計的。它捨棄了「中斷來了才執行」的傳統思路，改為<span class="highlight">主動追蹤 CPU 週期計數器</span>，在精確的週期邊界上執行控制迴路。這消除了中斷延遲抖動（Interrupt Latency Jitter），達到次微秒級的時序精度。</p>
+
+  <p class="highlight">Gyro 鎖相 (Phase-Lock)：</p>
+  <div class="code-block">
+<span class="comment">// 追蹤實際 EXTI 中斷時刻，消除累積偏移</span>
+<span class="keyword">int32_t</span> <span class="var">gyroSkew</span> = <span class="func">cmpTimeCycles</span>(<span class="var">nextTargetCycles</span>, <span class="var">gyro</span>-><span class="var">gyroSyncEXTI</span>) % <span class="var">desiredPeriodCycles</span>;
+<span class="var">accGyroSkew</span> += <span class="var">gyroSkew</span>;
+
+<span class="comment">// 每 GYRO_LOCK_COUNT 個週期校正一次</span>
+<span class="var">lastTargetCycles</span> -= (<span class="var">accGyroSkew</span> / <span class="var">GYRO_LOCK_COUNT</span>);
+  </div>
+  <p>調度器會持續比較「預期的執行時刻」與「實際的陀螺儀 EXTI 中斷時刻」，並透過移動 <span class="code">lastTargetCycles</span> 來消除長期漂移。這類似於數位通訊中的 PLL（鎖相環）概念。</p>
+</div>
+
+<h3>2.2 非實時域 (Non-realtime Domain)</h3>
+<div class="card">
+  <p>實時鏈執行完畢後，剩餘的時間才用於執行其他任務（如 Serial、OSD、Battery、Baro 等）。這些任務的排程遵循三個原則：</p>
+  <ol>
+    <li><strong>動態優先級與任務老化</strong>：等待越久的任務優先級越高。</li>
+    <li><strong>准入控制</strong>：只有預估能在下一個 Gyro 週期前完成的任務才被執行。</li>
+    <li><strong>自適應保護邊距</strong>：根據歷史執行表現動態調整安全緩衝。</li>
+  </ol>
+</div>
+
+<!-- 第三章：非實時域三大機制 -->
+<h2>三、非實時域的三大排程機制</h2>
+
+<h3>3.1 動態優先級與任務老化 (Task Aging)</h3>
+<div class="card">
+  <p>靜態優先級僅決定初始權重，真正影響排程的是<strong>動態優先級</strong>：</p>
+  <div class="code-block">
+<span class="comment">// 時間驅動任務</span>
+<span class="var">task</span>-><span class="var">taskAgePeriods</span> = <span class="func">cmpTimeUs</span>(<span class="var">currentTimeUs</span>, <span class="var">task</span>-><span class="var">lastExecutedAtUs</span>)
+                       / <span class="var">task</span>-><span class="var">attribute</span>-><span class="var">desiredPeriodUs</span>;
+<span class="var">task</span>-><span class="var">dynamicPriority</span> = <span class="num">1</span> + <span class="var">task</span>-><span class="var">attribute</span>-><span class="var">staticPriority</span> * <span class="var">task</span>-><span class="var">taskAgePeriods</span>;
+  </div>
+  <p><span class="code">taskAgePeriods</span> 表示「這個任務已經欠了多少個週期沒執行」。等待越久，動態優先級線性增長，最終會壓過其他任務。</p>
+  <p>對於事件驅動任務（如 <span class="code">TASK_RX</span>、<span class="code">TASK_OSD</span>），則透過 <span class="code">checkFunc</span> 觸發：</p>
+  <div class="code-block">
+<span class="keyword">if</span> (<span class="var">task</span>-><span class="var">attribute</span>-><span class="func">checkFunc</span>(<span class="var">currentTimeUs</span>, <span class="var">deltaTime</span>)) {
+    <span class="var">task</span>-><span class="var">dynamicPriority</span> = <span class="num">1</span> + <span class="var">task</span>-><span class="var">attribute</span>-><span class="var">staticPriority</span>;
+}
+  </div>
+  <p class="highlight">老化加速 (Expedite) 機制：</p>
+  <p>當任務長期無法獲得執行機會（<span class="code">taskAgePeriods > TASK_AGE_EXPEDITE_COUNT</span>），調度器會強制降低其預估執行時間：</p>
+  <div class="code-block">
+<span class="var">selectedTask</span>-><span class="var">anticipatedExecutionTime</span> *= <span class="var">TASK_AGE_EXPEDITE_SCALE</span>;
+  </div>
+  <p>這使得該任務更容易通過「時間預算檢查」，確保不會餓死 (Starvation)。</p>
+</div>
+
+<h3>3.2 准入控制：以執行時間預估為門檻</h3>
+<div class="card">
+  <p>這是 Betaflight 調度器最獨特之處。它並非單純選擇優先級最高的任務，而是<span class="highlight">檢查該任務是否能在下一個 Gyro 週期前完成</span>：</p>
+  <div class="code-block">
+<span class="keyword">timeDelta_t</span> <span class="var">taskRequiredTimeUs</span> = <span class="var">task</span>-><span class="var">anticipatedExecutionTime</span> >> <span class="var">TASK_EXEC_TIME_SHIFT</span>;
+<span class="keyword">int32_t</span> <span class="var">taskRequiredTimeCycles</span> = (<span class="keyword">int32_t</span>)<span class="func">clockMicrosToCycles</span>((<span class="keyword">uint32_t</span>)<span class="var">taskRequiredTimeUs</span>);
+<span class="var">taskRequiredTimeCycles</span> += <span class="var">checkCycles</span> + <span class="var">taskGuardCycles</span>;
+
+<span class="keyword">if</span> (<span class="var">taskRequiredTimeCycles</span> < <span class="var">schedLoopRemainingCycles</span>) {
+    <span class="comment">// 時間夠，可以執行</span>
+}
+  </div>
+  <p><span class="code">anticipatedExecutionTime</span> 是每個任務的自我估計執行時間，會根據歷史執行時間緩慢衰減更新：</p>
+  <div class="code-block">
+<span class="keyword">if</span> (<span class="var">taskExecutionEstimateUs</span> > (<span class="var">selectedTask</span>-><span class="var">anticipatedExecutionTime</span> >> <span class="var">TASK_EXEC_TIME_SHIFT</span>)) {
+    <span class="var">selectedTask</span>-><span class="var">anticipatedExecutionTime</span> = <span class="var">taskExecutionEstimateUs</span> << <span class="var">TASK_EXEC_TIME_SHIFT</span>;
+} <span class="keyword">else if</span> (<span class="var">selectedTask</span>-><span class="var">anticipatedExecutionTime</span> > <span class="num">1</span>) {
+    <span class="var">selectedTask</span>-><span class="var">anticipatedExecutionTime</span>--;  <span class="comment">// 緩慢衰減</span>
+}
+  </div>
+  <p>這是一種<strong>軟體層的 Worst-Case Execution Time (WCET) 估計</strong>，用來保證實時域不會被非實時任務侵蝕。</p>
+</div>
+
+<h3>3.3 自適應保護邊距 (Adaptive Guard Margin)</h3>
+<div class="card">
+  <p><span class="code">taskGuardCycles</span> 是一個動態調整的安全緩衝，機制類似 TCP 擁塞控制的 AIMD（加性增乘性減）：</p>
+  <div class="code-block">
+<span class="keyword">if</span> (<span class="var">cyclesOverdue</span> > <span class="num">0</span>) {
+    <span class="comment">// 任務實際執行超過預估 + guard，增加邊距</span>
+    <span class="var">taskGuardCycles</span> += <span class="var">taskGuardDeltaUpCycles</span>;
+} <span class="keyword">else if</span> (-<span class="var">cyclesOverdue</span> < <span class="var">taskGuardMinCycles</span>) {
+    <span class="comment">// 任務提前完成且餘裕充足，減少邊距</span>
+    <span class="var">taskGuardCycles</span> -= <span class="var">taskGuardDeltaDownCycles</span>;
+}
+  </div>
+  <p>這確保了在負載變化（例如連接 Configurator 導致 Serial 任務變長）時，調度器能自動保守化，避免錯過 Gyro 週期。</p>
+</div>
+
+<!-- 第四章：三種架構時間線比較 -->
+<h2>四、三種架構時間線比較</h2>
+<div class="card">
+  <p>假設 Gyro 週期 125μs (8KHz)，觀察任務如何在時間軸上被安插：</p>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#dc2626"></div>中斷/上下文切換</div>
+    <div class="legend-item"><div class="legend-color" style="background:#7c3aed"></div>Gyro 任務鏈</div>
+    <div class="legend-item"><div class="legend-color" style="background:#0891b2"></div>高優先級任務</div>
+    <div class="legend-item"><div class="legend-color" style="background:#16a34a"></div>低優先級任務</div>
+    <div class="legend-item"><div class="legend-color" style="background:#475569"></div>空閒/輪詢等待</div>
+  </div>
+  <div class="svg-wrap">
+    <svg width="900" height="380" viewBox="0 0 900 380" style="min-width:900px;">
+      <!-- RTOS 時間軸 -->
+      <text x="10" y="22" style="font-size:13px; font-weight:700; fill:#e2e8f0">RTOS (如 FreeRTOS)</text>
+      <line x1="80" y1="28" x2="880" y2="28" stroke="#475569" stroke-width="2"/>
+      <text x="80" y="18" style="font-size:10px; fill:#64748b">0μs</text>
+      <text x="880" y="18" style="font-size:10px; fill:#64748b">125μs</text>
+
+      <rect x="80" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="87" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="95" y="32" width="25" height="20" fill="#7c3aed" rx="3"/><text x="107" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Gyro</text>
+      <rect x="120" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="127" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="135" y="32" width="20" height="20" fill="#0891b2" rx="3"/><text x="145" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">High</text>
+      <rect x="155" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="162" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="170" y="32" width="30" height="20" fill="#7c3aed" rx="3"/><text x="185" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Filter</text>
+      <rect x="200" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="207" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="215" y="32" width="15" height="20" fill="#16a34a" rx="3"/><text x="222" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Low</text>
+      <rect x="230" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="237" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="245" y="32" width="25" height="20" fill="#7c3aed" rx="3"/><text x="257" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">PID</text>
+      <rect x="270" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="277" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="285" y="32" width="20" height="20" fill="#0891b2" rx="3"/><text x="295" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">RX</text>
+      <rect x="305" y="32" width="15" height="20" fill="#dc2626" rx="3"/><text x="312" y="45" style="font-size:8px; fill:#fff; text-anchor:middle">Ctx</text>
+      <rect x="320" y="32" width="560" height="20" fill="#334155" rx="3" opacity="0.3"/>
+      <text x="600" y="45" style="font-size:10px; fill:#64748b; text-anchor:middle">... 時間片輪轉持續 ...</text>
+
+      <!-- 傳統 Super-loop + ISR -->
+      <text x="10" y="92" style="font-size:13px; font-weight:700; fill:#e2e8f0">傳統 Super-loop + ISR</text>
+      <line x1="80" y1="98" x2="880" y2="98" stroke="#475569" stroke-width="2"/>
+
+      <rect x="80" y="102" width="8" height="26" fill="#dc2626" rx="2"/><text x="84" y="128" style="font-size:7px; fill:#fff; text-anchor:middle">ISR</text>
+      <rect x="110" y="102" width="8" height="26" fill="#dc2626" rx="2"/><text x="114" y="128" style="font-size:7px; fill:#fff; text-anchor:middle">ISR</text>
+      <rect x="200" y="102" width="8" height="26" fill="#dc2626" rx="2"/><text x="204" y="128" style="font-size:7px; fill:#fff; text-anchor:middle">ISR</text>
+      <rect x="350" y="102" width="8" height="26" fill="#dc2626" rx="2"/><text x="354" y="128" style="font-size:7px; fill:#fff; text-anchor:middle">ISR</text>
+      <rect x="500" y="102" width="8" height="26" fill="#dc2626" rx="2"/><text x="504" y="128" style="font-size:7px; fill:#fff; text-anchor:middle">ISR</text>
+      <rect x="700" y="102" width="8" height="26" fill="#dc2626" rx="2"/><text x="704" y="128" style="font-size:7px; fill:#fff; text-anchor:middle">ISR</text>
+
+      <rect x="88" y="102" width="22" height="26" fill="#7c3aed" rx="3"/><text x="99" y="118" style="font-size:8px; fill:#fff; text-anchor:middle">Gyro</text>
+      <rect x="118" y="102" width="82" height="26" fill="#0891b2" rx="3"/><text x="159" y="118" style="font-size:8px; fill:#fff; text-anchor:middle">Main Loop (順序執行所有任務)</text>
+      <rect x="208" y="102" width="672" height="26" fill="#334155" rx="3" opacity="0.5"/>
+      <text x="544" y="118" style="font-size:10px; fill:#94a3b8; text-anchor:middle">固定順序: Acc → Attitude → RX → OSD → ... (無動態優先級調整)</text>
+
+      <!-- Betaflight -->
+      <text x="10" y="162" style="font-size:13px; font-weight:700; fill:#38bdf8">Betaflight 調度器</text>
+      <line x1="80" y1="168" x2="880" y2="168" stroke="#475569" stroke-width="2"/>
+
+      <rect x="80" y="172" width="55" height="26" fill="#475569" rx="3" opacity="0.6"/>
+      <text x="107" y="188" style="font-size:9px; fill:#94a3b8; text-anchor:middle">輪詢等待</text>
+
+      <line x1="135" y1="162" x2="135" y2="202" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,2"/>
+      <text x="135" y="212" style="font-size:10px; fill:#fbbf24; text-anchor:middle">Gyro EXTI</text>
+
+      <rect x="135" y="172" width="20" height="26" fill="#dc2626" rx="3"/><text x="145" y="188" style="font-size:8px; fill:#fff; text-anchor:middle">GYRO</text>
+      <rect x="155" y="172" width="18" height="26" fill="#7c3aed" rx="3"/><text x="164" y="188" style="font-size:8px; fill:#fff; text-anchor:middle">FLT</text>
+      <rect x="173" y="172" width="22" height="26" fill="#0891b2" rx="3"/><text x="184" y="188" style="font-size:8px; fill:#fff; text-anchor:middle">PID</text>
+
+      <rect x="195" y="172" width="12" height="26" fill="#ca8a04" rx="3"/><text x="201" y="188" style="font-size:7px; fill:#fff; text-anchor:middle">RX</text>
+
+      <rect x="207" y="172" width="25" height="26" fill="#16a34a" rx="3"/><text x="219" y="188" style="font-size:8px; fill:#fff; text-anchor:middle">Serial</text>
+      <rect x="232" y="172" width="20" height="26" fill="#16a34a" rx="3"/><text x="242" y="188" style="font-size:8px; fill:#fff; text-anchor:middle">OSD</text>
+      <rect x="252" y="172" width="18" height="26" fill="#16a34a" rx="3"/><text x="261" y="188" style="font-size:8px; fill:#fff; text-anchor:middle">Baro</text>
+
+      <rect x="270" y="172" width="610" height="26" fill="#0f172a" rx="3" stroke="#334155" stroke-width="1"/>
+      <text x="575" y="188" style="font-size:10px; fill:#64748b; text-anchor:middle">剩餘時間: 輪詢等待下一個 Gyro 週期 / 執行更多非實時任務</text>
+
+      <line x1="260" y1="162" x2="260" y2="202" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,2"/>
+      <text x="260" y="212" style="font-size:10px; fill:#fbbf24; text-anchor:middle">下一個 Gyro</text>
+
+      <!-- 註解 -->
+      <path d="M 145 218 Q 145 232 184 232" fill="none" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="184" y="240" style="font-size:11px; fill:#94a3b8">實時域 (Real-time Domain): 嚴格時序，不可打斷</text>
+
+      <path d="M 219 218 Q 219 248 219 248" fill="none" stroke="#64748b" stroke-width="1" stroke-dasharray="3,3"/>
+      <text x="219" y="258" style="font-size:11px; fill:#94a3b8">非實時域: 動態優先級調度，准入控制</text>
+
+      <!-- 關鍵差異說明 -->
+      <text x="80" y="290" style="font-size:12px; font-weight:700; fill:#e2e8f0">關鍵差異總結:</text>
+
+      <rect x="80" y="298" width="250" height="62" fill="#1e293b" stroke="#334155" rx="6"/>
+      <text x="90" y="314" style="fill:#e2e8f0; font-size:12px; font-weight:600">RTOS</text>
+      <text x="90" y="330" style="font-size:11px; fill:#94a3b8">• 頻繁上下文切換 (10-20μs 開銷)</text>
+      <text x="90" y="344" style="font-size:11px; fill:#94a3b8">• 搶佔式，可能產生優先級反轉</text>
+
+      <rect x="345" y="298" width="250" height="62" fill="#1e293b" stroke="#334155" rx="6"/>
+      <text x="355" y="314" style="fill:#e2e8f0; font-size:12px; font-weight:600">傳統 Super-loop</text>
+      <text x="355" y="330" style="font-size:11px; fill:#94a3b8">• ISR 搶佔主迴圈，堆疊不確定</text>
+      <text x="355" y="344" style="font-size:11px; fill:#94a3b8">• 固定順序，無動態優先級</text>
+
+      <rect x="610" y="298" width="270" height="62" fill="#1e293b" stroke="#38bdf8" rx="6"/>
+      <text x="620" y="314" style="fill:#38bdf8; font-size:12px; font-weight:600">Betaflight</text>
+      <text x="620" y="330" style="font-size:11px; fill:#94a3b8">• 單棧，零上下文切換開銷</text>
+      <text x="620" y="344" style="font-size:11px; fill:#94a3b8">• 輪詢同步實現硬實時精度</text>
+    </svg>
+  </div>
+  <div class="note">
+    圖示說明：Betaflight 透過 busy-wait polling 在精確的 Gyro EXTI 時刻執行實時任務鏈，剩餘時間以動態優先級排程非實時任務，無傳統 ISR 搶佔也無 RTOS 上下文切換。
+  </div>
+</div>
+
+<!-- 第五章：調度流程圖 -->
+<h2>五、scheduler() 函式決策流程圖</h2>
+<div class="card">
+  <div class="svg-wrap">
+    <svg width="860" height="640" viewBox="0 0 860 640" style="min-width:860px;">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+        </marker>
+      </defs>
+
+      <!-- 開始 -->
+      <rect x="360" y="8" width="120" height="32" rx="16" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="420" y="28" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="700">scheduler()</text>
+      <line x1="420" y1="40" x2="420" y2="52" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- 條件: gyroEnabled? -->
+      <polygon points="420,52 480,78 420,104 360,78" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="420" y="74" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">gyroEnabled?</text>
+      <text x="420" y="86" text-anchor="middle" fill="#94a3b8" font-size="9">且時間接近?</text>
+
+      <!-- No 分支 -->
+      <line x1="360" y1="78" x2="260" y2="78" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="300" y="70" fill="#94a3b8" font-size="10">No</text>
+      <rect x="140" y="64" width="120" height="28" rx="5" fill="#1e293b" stroke="#64748b"/>
+      <text x="200" y="82" text-anchor="middle" fill="#e2e8f0" font-size="11">直接進入非實時域</text>
+      <line x1="200" y1="92" x2="200" y2="460" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- Yes 分支: 實時域 -->
+      <line x1="480" y1="78" x2="580" y2="78" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="530" y="70" fill="#94a3b8" font-size="10">Yes</text>
+
+      <rect x="580" y="64" width="200" height="28" rx="5" fill="#1e293b" stroke="#dc2626"/>
+      <text x="680" y="82" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">計算 nextTargetCycles</text>
+      <line x1="680" y1="92" x2="680" y2="108" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="108" width="200" height="28" rx="5" fill="#1e293b" stroke="#dc2626"/>
+      <text x="680" y="126" text-anchor="middle" fill="#fca5a5" font-size="11">schedLoopRemaining &lt; startCycles?</text>
+      <line x1="680" y1="136" x2="680" y2="152" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="152" width="200" height="28" rx="5" fill="#1e293b" stroke="#dc2626"/>
+      <text x="680" y="170" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">while(輪詢等待) 直到時刻到達</text>
+      <line x1="680" y1="180" x2="680" y2="196" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="196" width="200" height="28" rx="5" fill="#1e293b" stroke="#dc2626"/>
+      <text x="680" y="214" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="700">執行 TASK_GYRO</text>
+      <line x1="680" y1="224" x2="680" y2="240" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="240" width="200" height="28" rx="5" fill="#1e293b" stroke="#7c3aed"/>
+      <text x="680" y="258" text-anchor="middle" fill="#c4b5fd" font-size="11">if (gyroFilterReady) TASK_FILTER</text>
+      <line x1="680" y1="268" x2="680" y2="284" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="284" width="200" height="28" rx="5" fill="#1e293b" stroke="#0891b2"/>
+      <text x="680" y="302" text-anchor="middle" fill="#67e8f9" font-size="11">if (pidLoopReady) TASK_PID</text>
+      <line x1="680" y1="312" x2="680" y2="328" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="328" width="200" height="28" rx="5" fill="#1e293b" stroke="#ca8a04"/>
+      <text x="680" y="346" text-anchor="middle" fill="#fde047" font-size="11">rxFrameCheck() + failsafe</text>
+      <line x1="680" y1="356" x2="680" y2="372" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="580" y="372" width="200" height="28" rx="5" fill="#1e293b" stroke="#f97316"/>
+      <text x="680" y="390" text-anchor="middle" fill="#fdba74" font-size="11">更新 Gyro 鎖相 (desiredPeriod)</text>
+      <line x1="680" y1="400" x2="680" y2="460" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="680" y1="460" x2="420" y2="460" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- 非實時域 -->
+      <rect x="280" y="460" width="280" height="32" rx="5" fill="#1e293b" stroke="#16a34a" stroke-width="2"/>
+      <text x="420" y="480" text-anchor="middle" fill="#86efac" font-size="12" font-weight="700">非實時域: 動態優先級調度</text>
+      <line x1="420" y1="492" x2="420" y2="510" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- 條件: 有足夠時間? -->
+      <polygon points="420,510 500,536 420,562 340,536" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="420" y="532" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">剩餘時間 &gt; guard?</text>
+      <text x="420" y="544" text-anchor="middle" fill="#94a3b8" font-size="9">或 SERIAL 任務?</text>
+
+      <!-- No: 返回 -->
+      <line x1="340" y1="536" x2="240" y2="536" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="285" y="528" fill="#94a3b8" font-size="10">No</text>
+      <rect x="120" y="522" width="120" height="28" rx="5" fill="#1e293b" stroke="#64748b"/>
+      <text x="180" y="540" text-anchor="middle" fill="#94a3b8" font-size="11">本輪不執行，返回</text>
+      <line x1="180" y1="522" x2="180" y2="30" stroke="#64748b" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <text x="185" y="40" fill="#64748b" font-size="9">下一輪迴圈</text>
+
+      <!-- Yes: 遍歷任務 -->
+      <line x1="500" y1="536" x2="600" y2="536" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="545" y="528" fill="#94a3b8" font-size="10">Yes</text>
+
+      <rect x="600" y="522" width="220" height="28" rx="5" fill="#1e293b" stroke="#16a34a"/>
+      <text x="710" y="540" text-anchor="middle" fill="#86efac" font-size="11">遍歷 queue，計算 dynamicPriority</text>
+      <line x1="710" y1="550" x2="710" y2="566" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="600" y="566" width="220" height="28" rx="5" fill="#1e293b" stroke="#16a34a"/>
+      <text x="710" y="584" text-anchor="middle" fill="#86efac" font-size="11">選擇最高優先級且時間夠的任務</text>
+      <line x1="710" y1="594" x2="710" y2="610" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="600" y="610" width="220" height="22" rx="5" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+      <text x="710" y="625" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="700">schedulerExecuteTask()</text>
+    </svg>
+  </div>
+</div>
+
+<!-- 第六章：任務優先級表 -->
+<h2>六、任務優先級與動態老化機制</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>靜態優先級 (Static Priority)</h3>
+    <table>
+      <tr><th>等級</th><th>任務</th><th>說明</th></tr>
+      <tr><td><span class="tag tag-rt">REALTIME</span></td><td>GYRO, FILTER, PID</td><td>與硬體 EXTI 同步，絕對最高</td></tr>
+      <tr><td><span class="tag tag-high">HIGH</span></td><td>RX, DISPATCH</td><td>控制訊號與事件分發</td></tr>
+      <tr><td><span class="tag tag-med">MED-HIGH</span></td><td>SYSTEM, MAIN</td><td>系統負載與主更新</td></tr>
+      <tr><td><span class="tag tag-med">MEDIUM</span></td><td>BATTERY, ACC, GPS</td><td>感測器與電池狀態</td></tr>
+      <tr><td><span class="tag tag-low">LOW</span></td><td>OSD, TELEMETRY, LED</td><td>顯示與通訊輸出</td></tr>
+      <tr><td><span class="tag tag-lowest">LOWEST</span></td><td>VTX, ADC_INTERNAL</td><td>背景維護任務</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>動態優先級計算公式</h3>
+    <div style="background:#0f172a; padding:14px; border-radius:8px; margin-bottom:14px; text-align:center;">
+      <span style="color:#fbbf24; font-size:15px; font-weight:700;">dynamicPriority = 1 + staticPriority × taskAgePeriods</span>
+    </div>
+    <p><strong>taskAgePeriods</strong> = 距上次執行經過了多少個 desiredPeriod</p>
+    <p>任務等待越久，<span class="highlight">taskAgePeriods 線性增長</span>，動態優先級成指數級上升。</p>
+    <div style="background:#0f172a; padding:14px; border-radius:8px; margin-top:14px;">
+      <p style="color:#fbbf24; font-weight:700; margin-bottom:8px">老化加速機制 (Task Aging Expedite)</p>
+      <p>當 taskAgePeriods > TASK_AGE_EXPEDITE_COUNT (預設 1)：</p>
+      <p style="color:#a5b4fc; margin-top:6px; font-family:monospace; font-size:13px;">anticipatedExecutionTime *= TASK_AGE_EXPEDITE_SCALE</p>
+      <p style="margin-top:6px">強制降低預估執行時間，使任務更容易通過「時間預算」檢查而被排程。</p>
+    </div>
+  </div>
+</div>
+
+<!-- 第七章：准入控制 -->
+<h2>七、准入控制 (Admission Control) 邏輯</h2>
+<div class="card">
+  <p>Betaflight 的創新之處在於以 <span class="highlight">執行時間估計</span> 作為任務准入的條件，而非單純優先級搶佔：</p>
+  <div class="two-col">
+    <div style="background:#0f172a; padding:14px; border-radius:8px;">
+      <p style="color:#fbbf24; font-weight:700; margin-bottom:10px">准入條件</p>
+      <p style="font-size:13px; line-height:1.8; font-family:monospace; color:#a5b4fc;">
+        taskRequiredTimeCycles + taskGuardCycles &lt; schedLoopRemainingCycles
+      </p>
+      <p style="font-size:13px; margin-top:10px">或</p>
+      <p style="font-size:13px; line-height:1.8; font-family:monospace; color:#a5b4fc;">
+        scheduleCount & SCHED_TASK_DEFER_MASK == 0
+      </p>
+      <p style="font-size:13px; margin-top:10px">（定期強制檢查）</p>
+      <p style="font-size:13px; margin-top:10px">或</p>
+      <p style="font-size:13px; line-height:1.8; font-family:monospace; color:#a5b4fc;">
+        taskId == TASK_SERIAL
+      </p>
+      <p style="font-size:13px; margin-top:10px">（SERIAL 任務豁免時間預算檢查）</p>
+    </div>
+    <div style="background:#0f172a; padding:14px; border-radius:8px;">
+      <p style="color:#fbbf24; font-weight:700; margin-bottom:10px">自適應保護邊距</p>
+      <p style="font-size:13px; line-height:1.8">
+        <strong>taskGuardCycles</strong>：動態調整的執行時間緩衝。<br><br>
+        • 若任務實際執行超過預估 + guard → guard 增加<br>
+        • 若任務提前完成且餘裕充足 → guard 減少<br><br>
+        類似 TCP 擁塞控制的加性增乘性減 (AIMD) 機制，確保不錯過 Gyro 週期。
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- 第八章：完整比較表 -->
+<h2>八、完整比較：Betaflight vs RTOS vs 傳統 Super-loop</h2>
+<div class="card" style="overflow-x:auto">
+  <table>
+    <tr>
+      <th style="width:18%">特性</th>
+      <th style="width:28%">Betaflight 調度器</th>
+      <th style="width:27%">傳統 Super-loop + ISR</th>
+      <th style="width:27%">RTOS (FreeRTOS/RT-Thread)</th>
+    </tr>
+    <tr>
+      <td><strong>排程方式</strong></td>
+      <td>協作式 + 輪詢同步 (Gyro 域)</td>
+      <td>順序執行 + 中斷搶佔</td>
+      <td>搶佔式 + 時間片輪轉</td>
+    </tr>
+    <tr>
+      <td><strong>堆疊結構</strong></td>
+      <td><span class="highlight">單一堆疊</span>，無切換開銷</td>
+      <td>主堆疊 + ISR 堆疊</td>
+      <td>每任務獨立堆疊</td>
+    </tr>
+    <tr>
+      <td><strong>上下文切換</strong></td>
+      <td><span class="highlight">零開銷</span> (函式呼叫)</td>
+      <td>中斷進入/退出 (數十個週期)</td>
+      <td>PendSV/SVC (數十~數百週期)</td>
+    </tr>
+    <tr>
+      <td><strong>實時保證</strong></td>
+      <td>輪詢等待實現 <span class="highlight">硬實時</span></td>
+      <td>依賴中斷延遲，較不確定</td>
+      <td>優先級搶佔，但受調度器抖動</td>
+    </tr>
+    <tr>
+      <td><strong>任務通訊</strong></td>
+      <td>全域變數 / 共享記憶體</td>
+      <td>全域變數 / 旗標</td>
+      <td>佇列 / 信號量 / 互斥鎖</td>
+    </tr>
+    <tr>
+      <td><strong>優先級機制</strong></td>
+      <td>靜態 × 動態老化 (線性增長)</td>
+      <td>無，固定順序</td>
+      <td>靜態優先級 + 時間片</td>
+    </tr>
+    <tr>
+      <td><strong>時間管理</strong></td>
+      <td>CPU 週期計數 + 自適應鎖相</td>
+      <td>SysTick / 延遲函式</td>
+      <td>Tick-based 時間片</td>
+    </tr>
+    <tr>
+      <td><strong>記憶體佔用</strong></td>
+      <td><span class="highlight">極小</span> (無 TCB/堆疊複製)</td>
+      <td>小</td>
+      <td>較大 (每任務需 TCB + 堆疊)</td>
+    </tr>
+    <tr>
+      <td><strong>確定性</strong></td>
+      <td><span class="highlight">極高</span> (無調度器不確定性)</td>
+      <td>中 (受中斷影響)</td>
+      <td>中 (優先級反轉、饑餓可能)</td>
+    </tr>
+    <tr>
+      <td><strong>適用場景</strong></td>
+      <td>高頻控制迴路 (數百 Hz ~ 8KHz)</td>
+      <td>簡單嵌入式應用</td>
+      <td>複雜多工、網路協定堆疊</td>
+    </tr>
+  </table>
+</div>
+
+<!-- 第九章：核心創新點 -->
+<h2>九、Betaflight 調度器的核心設計創新</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>1. 雙域分離 (Dual-Domain Separation)</h3>
+    <p>將任務明確劃分為 <strong>Real-time Domain</strong> (Gyro/Filter/PID) 與 <strong>Non-realtime Domain</strong> (其他所有任務)。實時域與硬體 EXTI 鎖相，非實時域在剩餘時間內動態填充，兩者互不干擾。</p>
+  </div>
+  <div class="card">
+    <h3>2. 執行時間估計排程</h3>
+    <p>不同於傳統優先級搶佔，Betaflight 使用 <span class="code">anticipatedExecutionTime</span> 進行准入控制。任務只有在其「宣稱」的執行時間加上 guard margin 能夠在下一個 Gyro 週期前完成時，才會被排程。</p>
+  </div>
+  <div class="card">
+    <h3>3. 輪詢硬同步 (Busy-wait Synchronization)</h3>
+    <p>透過 <span class="code">while(schedLoopRemainingCycles > 0)</span> 主動輪詢 CPU 週期計數器，而非依賴中斷觸發。這消除了中斷延遲抖動，達到次微秒級的時序精度。</p>
+  </div>
+  <div class="card">
+    <h3>4. 自適應參數調整</h3>
+    <p><span class="code">schedLoopStartCycles</span> 與 <span class="code">taskGuardCycles</span> 會根據實際執行表現自動增減，類似網路擁塞控制。這使調度器能在不同硬體負載下自我調節，維持穩定性。</p>
+  </div>
+</div>
+
+<!-- 第十章：總結 -->
+<h2>十、設計哲學總結</h2>
+<div class="card">
+  <p>Betaflight 的調度器體現了嵌入式系統設計中的<strong>「專用化優於通用化」</strong>哲學：</p>
+  <ol>
+    <li><strong>捨棄通用性</strong>：不實現完整的 RTOS 功能（沒有任務創建/刪除、沒有阻塞/喚醒、沒有 IPC），只保留飛控所需的「週期觸發 + 優先級調度」。</li>
+    <li><strong>以空間換時間</strong>：用輪詢等待（消耗 CPU 週期）換取確定性時序，而非依賴中斷的「事件驅動」模型。</li>
+    <li><strong>自我調節</strong>：透過 <span class="code">taskGuardCycles</span>、<span class="code">schedLoopStartCycles</span>、<span class="code">anticipatedExecutionTime</span> 等參數的自適應調整，使調度器能在不同硬體負載與飛行狀態下自我穩定。</li>
+  </ol>
+  <div class="note">
+    總結：Betaflight 的調度器是一種針對飛行控制優化的<span class="highlight">確定性協作式排程器</span>，它捨棄了 RTOS 的通用性與傳統中斷的靈活性，換取了極致的時序確定性與零上下文切換開銷，這正是高頻 PID 控制迴路所需要的。
+  </div>
+</div>
+
+
+<!-- 第十一章：Gyro EXTI 的作用 -->
+<h2>十一、Gyro EXTI 的作用與對 Scheduler 的影響</h2>
+
+<h3>11.1 EXTI 的物理作用</h3>
+<div class="card">
+  <p>Gyro EXTI（External Interrupt）是陀螺儀晶片在<strong>新一批感測資料就緒</strong>時發出的硬體中斷訊號。對於 SPI 介面的陀螺儀（如 BMI270、ICM-42688-P），當內部 FIFO 或輸出暫存器有新樣本時，會透過 INT 引腳拉低觸發 MCU 的外部中斷。</p>
+</div>
+
+<h3>11.2 EXTI ISR 做了什麼？極輕量的「時間戳記錄」</h3>
+<div class="card">
+  <p>從 <span class="code">scheduler.c</span> 的鎖相邏輯可以反推 ISR 的行為：</p>
+  <div class="code-block">
+<span class="comment">// ISR 中執行（極輕量）</span>
+<span class="var">gyro</span>-><span class="var">gyroSyncEXTI</span> = <span class="func">getCycleCounter</span>();   <span class="comment">// 記錄中斷發生的精確 CPU 週期</span>
+<span class="var">gyro</span>-><span class="var">detectedEXTI</span>++;                     <span class="comment">// 中斷計數器 +1</span>
+  </div>
+  <p><strong>ISR 不會做以下事情：</strong></p>
+  <ul>
+    <li>❌ 讀取 SPI 資料</li>
+    <li>❌ 執行濾波運算</li>
+    <li>❌ 執行 PID 運算</li>
+    <li>❌ 呼叫任何任務函式</li>
+  </ul>
+  <p>這與傳統設計「中斷來了就在 ISR 裡把事做完」截然不同。</p>
+</div>
+
+<h3>11.3 會打斷 Scheduler 嗎？</h3>
+<div class="card">
+  <p><strong>技術上：會。</strong> EXTI 是硬體中斷，優先級高於主迴圈，CPU 必然會跳轉到 ISR 向量表入口，執行完 ISR 後才返回 <span class="code">scheduler()</span> 的輪詢等待迴圈。</p>
+  <p><strong>實際影響：幾乎為零。</strong> 原因有三：</p>
+  <table>
+    <tr><th>因素</th><th>說明</th></tr>
+    <tr><td><strong>ISR 極短</strong></td><td>僅 2~3 條指令（讀 cycle counter + 寫記憶體 + 遞增），耗時 &lt; 1μs</td></tr>
+    <tr><td><strong>無堆疊切換</strong></td><td>不觸發 PendSV，不進行任務排程，純粹的硬體中斷返回</td></tr>
+    <tr><td><strong>不搶佔實時鏈</strong></td><td>真正的 Gyro/Filter/PID 執行是在主迴圈輪詢到精確時間點後才開始，而非中斷觸發</td></tr>
+  </table>
+</div>
+
+<h3>11.4 Scheduler 如何利用 EXTI 資訊？</h3>
+<div class="card">
+  <p>EXTI 的時間戳被用於<strong>鎖相環 (PLL) 校正</strong>，而非直接觸發任務：</p>
+  <div class="code-block">
+<span class="comment">// scheduler.c 中的鎖相邏輯</span>
+<span class="keyword">int32_t</span> <span class="var">gyroSkew</span> = <span class="func">cmpTimeCycles</span>(<span class="var">nextTargetCycles</span>, <span class="var">gyro</span>-><span class="var">gyroSyncEXTI</span>) % <span class="var">desiredPeriodCycles</span>;
+<span class="keyword">if</span> (<span class="var">gyroSkew</span> > (<span class="var">desiredPeriodCycles</span> / <span class="num">2</span>)) {
+    <span class="var">gyroSkew</span> -= <span class="var">desiredPeriodCycles</span>;  <span class="comment">// 處理環繞</span>
+}
+<span class="var">accGyroSkew</span> += <span class="var">gyroSkew</span>;
+
+<span class="comment">// 每 GYRO_LOCK_COUNT 個週期校正一次</span>
+<span class="keyword">if</span> (<span class="var">gyro</span>-><span class="var">detectedEXTI</span> >= <span class="var">terminalGyroLockCount</span>) {
+    <span class="var">lastTargetCycles</span> -= (<span class="var">accGyroSkew</span> / <span class="var">GYRO_LOCK_COUNT</span>);  <span class="comment">// 消除累積漂移</span>
+}
+  </div>
+  <p class="highlight">這裡的設計精髓：</strong></p>
+  <ul>
+    <li><strong>EXTI 提供「真實的物理時間基準」</strong>：陀螺儀晶片內部有自己的時脈，實際輸出速率與 MCU 的 <span class="code">desiredPeriodCycles</span> 理論值存在微小漂移。</li>
+    <li><strong>Scheduler 主動追蹤而非被動響應</strong>：Scheduler 透過比較「預期執行時刻 (<span class="code">nextTargetCycles</span>)」與「實際 EXTI 時刻 (<span class="code">gyroSyncEXTI</span>)」，緩慢調整 <span class="code">lastTargetCycles</span>，讓軟體迴路與硬體陀螺儀「鎖相」。</li>
+    <li><strong>無累積誤差</strong>：若無此機制，125μs 的週期經過數千次後會產生明顯的相位漂移，導致控制迴路與感測資料不同步。</li>
+  </ul>
+</div>
+
+<h3>11.5 與傳統中斷驅動的對比</h3>
+<div class="card">
+  <table>
+    <tr><th>設計模式</th><th>ISR 內容</th><th>Scheduler 角色</th><th>時序精度</th></tr>
+    <tr>
+      <td><strong>傳統 ISR 驅動</strong></td>
+      <td>讀取資料 + 濾波 + PID</td>
+      <td>僅執行背景任務</td>
+      <td>受中斷延遲抖動影響</td>
+    </tr>
+    <tr>
+      <td><strong>Betaflight 模式</strong></td>
+      <td>僅記錄時間戳</td>
+      <td>輪詢等待後執行完整鏈</td>
+      <td>次微秒級，無抖動</td>
+    </tr>
+  </table>
+</div>
+
+<div class="note">
+  <strong>總結：</strong> Gyro EXTI 是「同步基準訊號」，而非「任務觸發訊號」。它會在硬體層短暫打斷 CPU（&lt; 1μs），但 ISR 極輕量，不影響 Scheduler 的排程邏輯。Scheduler 利用 EXTI 的時間戳進行鎖相校正，確保軟體的 Gyro/Filter/PID 執行時刻與硬體感測器的實際輸出時刻長期同步。
+</div>
+
+
+<!-- 第十二章：同步基準訊號與 PLL -->
+<h2>十二、同步基準訊號與鎖相環 (PLL) 機制</h2>
+
+<h3>12.1 為什麼需要參考訊號？</h3>
+<div class="card">
+  <p>MCU 的 CPU 週期計數器 (<span class="code">DWT_CYCCNT</span>) 與陀螺儀晶片內部的取樣時脈是<strong>兩個獨立的振盪源</strong>：</p>
+  <ul>
+    <li><strong>MCU 晶振</strong>：例如 168MHz，由外部石英振盪器驅動</li>
+    <li><strong>Gyro 晶振</strong>：例如 32.768kHz 或內部 RC，用於決定實際的輸出速率</li>
+  </ul>
+  <p>兩者之間存在：</p>
+  <ol>
+    <li><strong>頻率偏移</strong>（Frequency Offset）：標稱 8KHz 實際可能是 8003.2Hz</li>
+    <li><strong>相位漂移</strong>（Phase Drift）：每次週期的微小誤差會隨時間累積</li>
+  </ol>
+  <p>如果沒有 EXTI 提供「真實世界發生了什麼」的資訊，Scheduler 只能盲目相信 <span class="code">desiredPeriodCycles</span> 這個理論值，最終導致：</p>
+  <ul>
+    <li>軟體以為該讀取新資料了，但硬體還沒準備好 → 讀到舊資料</li>
+    <li>長期累積後，控制迴路與感測器輸出完全失步</li>
+  </ul>
+</div>
+
+<h3>12.2 Betaflight 的軟體 PLL 結構</h3>
+<div class="card">
+  <p>從 <span class="code">scheduler.c</span> 的鎖相邏輯可以對應到標準 PLL 的三個核心組件：</p>
+
+  <div class="svg-wrap">
+    <svg width="760" height="340" viewBox="0 0 760 340" style="min-width:760px;">
+      <!-- 外框 -->
+      <rect x="20" y="10" width="720" height="320" rx="10" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+      <text x="380" y="32" text-anchor="middle" fill="#38bdf8" font-size="14" font-weight="700">Betaflight Software PLL (鎖相環)</text>
+
+      <!-- 參考輸入 -->
+      <rect x="40" y="60" width="130" height="50" rx="6" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="105" y="80" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">參考輸入</text>
+      <text x="105" y="96" text-anchor="middle" fill="#94a3b8" font-size="9">Gyro EXTI</text>
+      <text x="105" y="108" text-anchor="middle" fill="#94a3b8" font-size="9">(真實取樣時刻)</text>
+
+      <!-- 箭頭 -->
+      <line x1="170" y1="85" x2="220" y2="85" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- 相位檢測器 -->
+      <rect x="220" y="55" width="160" height="60" rx="6" fill="#1e293b" stroke="#dc2626" stroke-width="2"/>
+      <text x="300" y="75" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">相位檢測器</text>
+      <text x="300" y="92" text-anchor="middle" fill="#94a3b8" font-size="9">cmpTimeCycles(</text>
+      <text x="300" y="104" text-anchor="middle" fill="#94a3b8" font-size="9">nextTarget, gyroSyncEXTI)</text>
+
+      <!-- 箭頭 -->
+      <line x1="380" y1="85" x2="430" y2="85" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- 環路濾波器 -->
+      <rect x="430" y="55" width="140" height="60" rx="6" fill="#1e293b" stroke="#7c3aed" stroke-width="2"/>
+      <text x="500" y="75" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="600">環路濾波器</text>
+      <text x="500" y="92" text-anchor="middle" fill="#94a3b8" font-size="9">accGyroSkew</text>
+      <text x="500" y="104" text-anchor="middle" fill="#94a3b8" font-size="9">+= gyroSkew</text>
+
+      <!-- 箭頭 -->
+      <line x1="570" y1="85" x2="620" y2="85" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- NCO -->
+      <rect x="620" y="55" width="110" height="60" rx="6" fill="#1e293b" stroke="#0891b2" stroke-width="2"/>
+      <text x="675" y="75" text-anchor="middle" fill="#67e8f9" font-size="11" font-weight="600">數控振盪器</text>
+      <text x="675" y="92" text-anchor="middle" fill="#94a3b8" font-size="9">lastTargetCycles</text>
+      <text x="675" y="104" text-anchor="middle" fill="#94a3b8" font-size="9">-= correction</text>
+
+      <!-- 回授箭頭 -->
+      <path d="M 675 115 Q 675 150 380 150 Q 105 150 105 115" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+      <text x="380" y="165" text-anchor="middle" fill="#64748b" font-size="10">回授路徑：調整本地時脈的相位/頻率</text>
+
+      <!-- 輸出 -->
+      <line x1="675" y1="55" x2="675" y2="30" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="675" y="24" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">nextTargetCycles</text>
+
+      <!-- 下方說明 -->
+      <rect x="40" y="190" width="700" height="125" rx="8" fill="#1e293b" stroke="#1e293b"/>
+      <text x="55" y="212" fill="#fbbf24" font-size="12" font-weight="700">各組件對應程式碼：</text>
+
+      <text x="55" y="235" fill="#e2e8f0" font-size="11">• <strong style="color:#dc2626">相位檢測器：</strong>gyroSkew = cmpTimeCycles(nextTargetCycles, gyro->gyroSyncEXTI) % desiredPeriodCycles</text>
+      <text x="55" y="255" fill="#e2e8f0" font-size="11">• <strong style="color:#7c3aed">環路濾波器：</strong>accGyroSkew += gyroSkew （積分器，平滑單一週期雜訊，保留長期漂移趨勢）</text>
+      <text x="55" y="275" fill="#e2e8f0" font-size="11">• <strong style="color:#0891b2">數控振盪器：</strong>lastTargetCycles -= (accGyroSkew / GYRO_LOCK_COUNT) （根據累積誤差回授校正）</text>
+      <text x="55" y="300" fill="#94a3b8" font-size="10">註：若軟體持續落後硬體，就把目標時刻往前拉；若超前，就往後推。</text>
+    </svg>
+  </div>
+</div>
+
+<h3>12.3 相位檢測器 (Phase Detector)</h3>
+<div class="card">
+  <div class="code-block">
+<span class="keyword">int32_t</span> <span class="var">gyroSkew</span> = <span class="func">cmpTimeCycles</span>(<span class="var">nextTargetCycles</span>, <span class="var">gyro</span>-><span class="var">gyroSyncEXTI</span>) % <span class="var">desiredPeriodCycles</span>;
+<span class="keyword">if</span> (<span class="var">gyroSkew</span> > (<span class="var">desiredPeriodCycles</span> / <span class="num">2</span>)) {
+    <span class="var">gyroSkew</span> -= <span class="var">desiredPeriodCycles</span>;  <span class="comment">// 處理環繞（wrap-around）</span>
+}
+  </div>
+  <p>這行程式碼就是<strong>相位檢測器</strong>：它計算「<strong>軟體預計執行時刻</strong>」與「<strong>硬體實際就緒時刻</strong>」之間的時間差。</p>
+  <ul>
+    <li>若 <span class="code">gyroSkew &gt; 0</span>：表示軟體跑太慢（<strong>落後</strong>硬體）</li>
+    <li>若 <span class="code">gyroSkew &lt; 0</span>：表示跑太快（<strong>超前</strong>硬體）</li>
+  </ul>
+</div>
+
+<h3>12.4 環路濾波器 (Loop Filter)</h3>
+<div class="card">
+  <div class="code-block">
+<span class="var">accGyroSkew</span> += <span class="var">gyroSkew</span>;
+  </div>
+  <p>單一週期的 <span class="code">gyroSkew</span> 可能因中斷延遲或雜訊而波動，因此需要<strong>累積（積分）</strong>來平滑。這相當於一個<strong>一階低通濾波器 / 積分器</strong>，濾除高頻抖動，只保留長期漂移趨勢。</p>
+  <p>每 <span class="code">GYRO_LOCK_COUNT</span> 個週期才執行一次校正，進一步降低對單一週期雜訊的敏感度。</p>
+</div>
+
+<h3>12.5 數控振盪器 (NCO - Numerically Controlled Oscillator)</h3>
+<div class="card">
+  <div class="code-block">
+<span class="keyword">if</span> (<span class="var">gyro</span>-><span class="var">detectedEXTI</span> >= <span class="var">terminalGyroLockCount</span>) {
+    <span class="var">lastTargetCycles</span> -= (<span class="var">accGyroSkew</span> / <span class="var">GYRO_LOCK_COUNT</span>);  <span class="comment">// 回授校正</span>
+    <span class="var">accGyroSkew</span> = <span class="num">0</span>;  <span class="comment">// 重置累積器</span>
+}
+  </div>
+  <p>這是 PLL 的<strong>回授路徑</strong>：根據累積的相位誤差，調整下一次的目標時刻 <span class="code">lastTargetCycles</span>。</p>
+  <ul>
+    <li>如果軟體<strong>持續落後</strong>硬體 → 把目標時刻<strong>往前拉</strong></li>
+    <li>如果軟體<strong>持續超前</strong>硬體 → 把目標時刻<strong>往後推</strong></li>
+  </ul>
+</div>
+
+<h3>12.6 EXTI 的角色 = 參考時脈 (Reference Clock)</h3>
+<div class="card">
+  <p>在標準 PLL 理論中，參考訊號必須具備以下特性，而 Gyro EXTI 恰好滿足：</p>
+  <table>
+    <tr><th>PLL 對參考訊號的要求</th><th>Gyro EXTI 的表現</th></tr>
+    <tr><td><strong>穩定且已知頻率</strong></td><td>Gyro 輸出速率由晶片內部 PLL/DLL 鎖定，極穩定</td></tr>
+    <tr><td><strong>與被控系統相關</strong></td><td>直接標記「新資料就緒」這個物理事件</td></tr>
+    <tr><td><strong>低抖動 (Low Jitter)</strong></td><td>硬體中斷延遲 &lt; 1μs，相對於 125μs 週期可忽略</td></tr>
+    <tr><td><strong>持續可用</strong></td><td>只要 Gyro 運作，EXTI 持續以固定間隔產生</td></tr>
+  </table>
+  <div class="note">
+    <strong>如果沒有 EXTI</strong>，Betaflight 的調度器就退化成「開環振盪器」——只根據 <span class="code">desiredPeriodCycles</span> 這個理論值自嗨，無法感知也無法修正與真實世界的偏差。
+  </div>
+</div>
+
+<h3>12.7 但 EXTI 不是 PLL 的全部</h3>
+<div class="card">
+  <p>同步基準訊號雖然是<strong>必要條件</strong>，但單有它還不夠：</p>
+  <table>
+    <tr><th>缺少的組件</th><th>後果</th></tr>
+    <tr><td><strong>沒有相位檢測</strong></td><td>不知道軟體與硬體差了多少</td></tr>
+    <tr><td><strong>沒有環路濾波</strong></td><td>單一週期的誤差可能是雜訊，不該立即反應</td></tr>
+    <tr><td><strong>沒有回授調整</strong></td><td>知道了誤差卻不改，等於沒鎖相</td></tr>
+  </table>
+  <p>Betaflight 的設計巧妙之處在於：<strong>它把完整的 PLL 邏輯全部壓縮在 Scheduler 主迴圈的幾行程式碼中</strong>，沒有額外的中斷、沒有專用的 PLL 硬體模組，純粹以軟體實現。</p>
+</div>
+
+<h3>12.8 總結</h3>
+<div class="card">
+  <p class="highlight">Gyro EXTI 是鎖相環的「參考輸入端」，是 PLL 能夠閉環運作的必要前提，但並非 PLL 本身。</p>
+  <p>完整的鎖相環需要四個環節協同運作：</p>
+  <ol>
+    <li><strong>參考訊號</strong>（Gyro EXTI ← 這是硬體給的）</li>
+    <li><strong>相位檢測</strong>（<span class="code">gyroSkew</span> 計算 ← 軟體實現）</li>
+    <li><strong>環路濾波</strong>（<span class="code">accGyroSkew</span> 累積 ← 軟體實現）</li>
+    <li><strong>回授調整</strong>（<span class="code">lastTargetCycles</span> 修正 ← 軟體實現）</li>
+  </ol>
+  <div class="note">
+    Betaflight 的創新不在於使用了 EXTI（很多飛控都接 Gyro INT），而在於<strong>它沒有讓 EXTI 直接觸發任務執行，而是讓 EXTI 作為 PLL 的參考輸入，由 Scheduler 主動輪詢並鎖相後，再在精確的本地時刻執行控制鏈</strong>。這種「軟 PLL + 輪詢同步」的組合，才是其硬實時精度的核心秘密。
+  </div>
+</div>
+
+
+<div class="footer">
+  Betaflight Scheduler Analysis · Generated from source code review (main.c, scheduler.c, tasks.c)
+</div>
+
+</div>
+</body>
+</html>
