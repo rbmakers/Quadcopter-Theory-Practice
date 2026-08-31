@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>World Model × 強化學習：從 DreamerV3 到視覺化無人機競速</title>
+
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['\\[', '\\]']],
+    tags: 'ams',
+    packages: {'[+]': ['ams']}
+  },
+  chtml: {
+    // 使用 MathJax 內建的 TeX（Computer Modern 衍生）字型網頁字型，
+    // 確保所有數學式皆以正統 LaTeX 數學字型呈現，而非瀏覽器預設字型。
+    fontURL: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/output/chtml/fonts/woff-v2',
+    scale: 1.05,
+    matchFontHeight: false
+  },
+  options: {
+    renderActions: {
+      assistiveMml: []
+    }
+  },
+  startup: {
+    typeset: true
+  }
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml-full.js" id="MathJax-script" async></script>
+
+<style>
+  :root{
+    --navy:#0f2540;
+    --blue:#1c5d99;
+    --accent:#e08e26;
+    --accent2:#2e8b57;
+    --bg:#f6f8fb;
+    --card:#ffffff;
+    --line:#dde4ee;
+    --code:#f0f3f8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:"Noto Sans TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:var(--bg); color:#1a1f2b; line-height:1.75; font-size:16.5px;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px 80px;}
+
+  header.hero{
+    background:linear-gradient(135deg,var(--navy) 0%, #1a3a63 55%, var(--blue) 100%);
+    color:#fff; padding:56px 24px 44px; text-align:left;
+  }
+  header.hero .inner{max-width:1080px; margin:0 auto;}
+  header.hero .tag{
+    display:inline-block; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.35);
+    padding:4px 12px; border-radius:20px; font-size:13px; letter-spacing:.05em; margin-bottom:18px;
+  }
+  header.hero h1{font-size:2.1rem; margin:0 0 10px; font-weight:800; line-height:1.4;}
+  header.hero h2{font-size:1.05rem; font-weight:400; margin:0 0 22px; color:#cfe0f5;}
+  header.hero .meta{display:flex; flex-wrap:wrap; gap:10px 26px; font-size:13.5px; color:#dfe9f7;}
+  header.hero .meta span b{color:#fff; font-weight:600;}
+
+  nav.toc{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    margin:-30px 0 40px; padding:22px 26px; box-shadow:0 8px 24px rgba(15,37,64,.08);
+  }
+  nav.toc h3{margin:0 0 12px; font-size:1rem; color:var(--navy); letter-spacing:.03em;}
+  nav.toc ol{margin:0; padding-left:22px; columns:2; column-gap:32px;}
+  nav.toc li{margin-bottom:6px; font-size:14.5px;}
+  nav.toc a{color:var(--blue); text-decoration:none;}
+  nav.toc a:hover{text-decoration:underline;}
+
+  section{margin-bottom:52px;}
+  h2.sec-title{
+    font-size:1.55rem; color:var(--navy); border-bottom:3px solid var(--accent);
+    padding-bottom:10px; margin:0 0 20px; display:flex; align-items:baseline; gap:10px;
+  }
+  h2.sec-title .num{color:var(--accent); font-weight:800;}
+  h3{color:var(--blue); font-size:1.18rem; margin:30px 0 12px;}
+  h4{color:var(--navy); font-size:1.02rem; margin:22px 0 8px;}
+  p{margin:0 0 14px;}
+  ul,ol{margin:0 0 16px; padding-left:24px;}
+  li{margin-bottom:6px;}
+
+  .paper-card{
+    display:flex; gap:16px; align-items:flex-start; background:var(--card);
+    border:1px solid var(--line); border-left:5px solid var(--blue); border-radius:10px;
+    padding:16px 18px; margin:14px 0 22px;
+  }
+  .paper-card .pid{
+    flex:0 0 auto; background:var(--blue); color:#fff; font-weight:700; font-size:13px;
+    padding:6px 10px; border-radius:8px; white-space:nowrap;
+  }
+  .paper-card .pmeta{font-size:14px; color:#3a4658;}
+  .paper-card .pmeta b{color:var(--navy); font-size:15.5px;}
+
+  .box{
+    border-radius:10px; padding:16px 20px; margin:18px 0; border:1px solid var(--line);
+  }
+  .box.def{background:#eef4fb; border-left:5px solid var(--blue);}
+  .box.eq-note{background:#fbf3e7; border-left:5px solid var(--accent);}
+  .box.key{background:#eaf6ef; border-left:5px solid var(--accent2);}
+  .box.compare{background:#fdeeee; border-left:5px solid #c0392b;}
+  .box h4{margin-top:0;}
+
+  table{width:100%; border-collapse:collapse; margin:18px 0; font-size:14.5px;}
+  th,td{border:1px solid var(--line); padding:9px 12px; text-align:left; vertical-align:top;}
+  th{background:var(--navy); color:#fff; font-weight:600;}
+  tr:nth-child(even) td{background:#f7f9fc;}
+
+  code, .mono{font-family:"JetBrains Mono","Consolas",monospace; background:var(--code); padding:1px 6px; border-radius:5px; font-size:13.5px;}
+  pre{background:#0f172a; color:#dbe6f5; padding:14px 16px; border-radius:8px; overflow-x:auto; font-size:13px;}
+
+  .fig-caption{font-size:13px; color:#5a6478; text-align:center; margin-top:6px;}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:720px){ .grid2{grid-template-columns:1fr;} nav.toc ol{columns:1;} }
+
+  .badge{display:inline-block; font-size:12px; font-weight:700; padding:2px 9px; border-radius:20px; margin-right:6px;}
+  .badge.wm{background:#dbeafe; color:#1c5d99;}
+  .badge.rl{background:#fde8d2; color:#a85e10;}
+  .badge.vis{background:#e2f5e9; color:#1f7a4d;}
+  .badge.real{background:#fbe3e3; color:#a3312c;}
+
+  .qa{background:#fff8ea; border:1px dashed #d9a441; border-radius:10px; padding:14px 18px; margin:16px 0;}
+  .qa b{color:#8a5a0c;}
+
+  footer{border-top:1px solid var(--line); padding-top:20px; margin-top:60px; font-size:13px; color:#7a8494; text-align:center;}
+
+  .eqn{overflow-x:auto;}
+  /* 確保所有由 MathJax 排版的數學式，一律使用 LaTeX（Computer Modern 衍生）數學字型，
+     不繼承本文的中文/無襯線網頁字型。 */
+  mjx-container{
+    font-family:"MJXZERO","MJXTEX","STIX Two Math",serif !important;
+  }
+  mjx-container[jax="CHTML"][display="true"]{
+    margin:12px 0 !important;
+  }
+  p.eqn mjx-container{ margin:0 auto !important; }
+  .step-list{counter-reset:step;}
+  .step-list li{list-style:none; position:relative; padding-left:6px; margin-bottom:10px;}
+  .step-list li::before{
+    counter-increment:step; content:counter(step);
+    display:inline-block; width:22px; height:22px; line-height:22px; text-align:center;
+    background:var(--blue); color:#fff; border-radius:50%; font-size:12px; margin-right:8px; font-weight:700;
+  }
+  .timeline{border-left:3px solid var(--blue); margin:22px 0 22px 12px; padding-left:22px;}
+  .timeline .item{position:relative; margin-bottom:26px;}
+  .timeline .item::before{
+    content:""; position:absolute; left:-28px; top:4px; width:12px; height:12px; border-radius:50%;
+    background:var(--accent); border:3px solid #fff; box-shadow:0 0 0 2px var(--accent);
+  }
+  .timeline .item h4{margin:0 0 4px;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="inner">
+    <span class="tag">碩士班課程講義 · World Model 與強化學習專題</span>
+    <h1>World Model × 強化學習：<br>從通用世界模型到視覺化無人機競速</h1>
+    <h2>以 DreamerV1、DreamerV2、DreamerV3、Dream to Fly、SkyDreamer 五篇論文為主軸的技術演進分析</h2>
+    <div class="meta">
+      <span>教材範圍：<b>Model-Based RL / RSSM / 視覺化控制 / Sim-to-Real</b></span>
+      <span>適用對象：<b>控制工程、機器人學、深度強化學習研究生</b></span>
+      <span>先備知識：<b>MDP、變分推論基礎、四旋翼動力學</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <h3>課程大綱</h3>
+  <ol>
+    <li><a href="#s1">為什麼要學 World Model？—— Model-Based RL 的動機</a></li>
+    <li><a href="#s1b">起源論文：Ha &amp; Schmidhuber (2018) 的 <i>World Models</i>（V-M-C 架構）</a></li>
+    <li><a href="#s2">五篇論文總覽與研究脈絡</a></li>
+    <li><a href="#s3">DreamerV1：Dream to Control（潛在想像的起點）</a></li>
+    <li><a href="#s4">DreamerV2：離散世界模型與 Atari 人類水準</a></li>
+    <li><a href="#s5">DreamerV3：通用世界模型架構</a></li>
+    <li><a href="#s6">DreamerV3 的穩健性技巧（跨領域固定超參數的關鍵）</a></li>
+    <li><a href="#s7">Dream to Fly：從模擬到視覺化無人機競速</a></li>
+    <li><a href="#s8">SkyDreamer：Informed Dreamer 與端到端實機部署</a></li>
+    <li><a href="#s9">六篇論文之技術比較</a></li>
+    <li><a href="#s10">數學附錄：關鍵推導與符號整理</a></li>
+    <li><a href="#s11">對 UAV 控制研究的啟示與延伸思考</a></li>
+    <li><a href="#s12">課後習題</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<section id="s1">
+<h2 class="sec-title"><span class="num">1.</span> 為什麼要學 World Model？—— Model-Based RL 的動機</h2>
+
+<p>
+在傳統強化學習（Model-Free RL，例如 PPO、SAC、DQN）中，智能體必須透過與真實環境（或模擬器）反覆互動，
+才能學到「在狀態 \(s\) 下採取動作 \(a\) 能得到多少報酬」。這種學習方式的樣本效率（sample efficiency）通常很差：
+每一次梯度更新都仰賴新的環境互動資料，對於高維度像素輸入、動力學複雜、渲染成本高的任務（例如無人機競速）而言，
+訓練成本會非常昂貴。
+</p>
+
+<p>
+<b>Model-Based RL（MBRL）</b> 的核心想法，是先學一個「世界模型」（World Model）—— 一個能夠<b>預測環境動態</b>的神經網路，
+再讓智能體在這個學到的模型裡「想像」（imagine）大量的虛擬軌跡來訓練 actor 與 critic，而不必每一步都真的去環境裡跑。
+這個想法最早可以追溯到 Sutton 的 Dyna 架構、Ha &amp; Schmidhuber 2018 年的
+<a href="#s1b"><i>World Models</i></a> 論文（見第 1.5 節），
+而 <b>Dreamer 系列演算法</b>（Hafner et al.）則是把這個想法發展成一套可以在超過 150 種不同任務上、
+<b>用同一組超參數</b>穩定運作的通用演算法。
+</p>
+
+<div class="box def">
+<h4>定義 1.1　世界模型（World Model）</h4>
+<p>
+給定觀測序列 \(x_{1:T}\)、動作序列 \(a_{1:T}\)，世界模型學習一個潛在狀態轉移模型：
+</p>
+<p class="eqn">\[
+p_\phi(z_t \mid h_t), \qquad h_t = f_\phi(h_{t-1}, z_{t-1}, a_{t-1})
+\]</p>
+<p>
+其中 \(z_t\) 為隨機潛在表徵（stochastic latent），\(h_t\) 為遞迴狀態（deterministic recurrent state）。
+兩者合併 \(s_t \doteq \{h_t, z_t\}\) 構成完整的模型狀態（model state），
+之後的 reward、value、action 都是在這個壓縮後的潛在空間中被預測與學習，而不是直接對高維像素操作。
+</p>
+</div>
+
+<div class="qa">
+<b>為什麼不直接對像素做 RL？</b>
+因為原始影像維度極高（例如 \(64\times64\times3\)），Model-Free RL 需要極大量互動樣本才能學出好的策略，
+且梯度訊號稀疏、雜訊大。World Model 先把「感知」與「決策」解耦：
+encoder 負責把像素壓成資訊量足夠但維度低的潛在向量，決策（actor-critic）則完全在這個潛在空間中進行，
+大幅降低了樣本複雜度，這也是 Dreamer 系列論文反覆驗證的核心優勢。
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s1b">
+<h2 class="sec-title"><span class="num">1.5</span> 起源論文：Ha &amp; Schmidhuber (2018) 的 <i>World Models</i></h2>
+
+<div class="paper-card">
+  <div class="pid">[0] World Models</div>
+  <div class="pmeta">
+    <b>World Models</b><br>
+    David Ha, Jürgen Schmidhuber — arXiv:1803.10122（2018 年 3 月初版，2018 年 5 月修訂 v4；互動版見 worldmodels.github.io）<br>
+    <span class="badge wm">World Model</span><span class="badge rl">V-M-C 架構</span>
+    定位：本教材前述五篇 Dreamer 系列論文的<b>直接精神起源</b>。首次以簡潔的
+    「<b>視覺（V）— 記憶（M）— 控制器（C）</b>」三元件架構，示範如何把一個高維視覺控制任務拆解成
+    「先無監督學習世界模型、再用極小的控制器學習決策」，並且證明 agent 可以<b>完全在自己世界模型產生的「夢境」中訓練</b>，
+    再把學到的策略遷移回真實環境。這篇論文比 DreamerV1（2019）早了將近兩年，是理解「為什麼要把感知與決策解耦」
+    「為什麼可以在想像中訓練」這兩個 Dreamer 系列核心概念最好的起點。
+  </div>
+</div>
+
+<h3>1.5.1　動機：人腦中的「心智模型」</h3>
+<p>
+論文開場引用系統動力學之父 Jay Wright Forrester 的話：<i>「我們腦海中攜帶的世界圖像，只是一個模型。
+沒有人的腦中會想像出整個世界、整個政府或整個國家；他只選取了一些概念與它們之間的關係，用來代表真實系統。」</i>
+Ha &amp; Schmidhuber 從棒球打者只有數十毫秒反應時間卻能揮棒擊中 100 mph 速球的例子出發，
+主張人類是靠大腦內建的<b>預測模型</b>做出反射性動作，而非即時對每個可能的未來展開規劃 —— 
+這正是「World Model」一詞在此文中的核心隱喻：先學會預測，再用預測結果做決策，而不必每次都重新規劃。
+</p>
+
+<h3>1.5.2　V-M-C 三元件架構</h3>
+<p>
+論文提出一個受認知系統啟發的簡單 agent 模型，包含三個各司其職、<b>分開訓練</b>的組件：
+</p>
+
+<div class="grid2">
+<div class="box def">
+<h4>V（Vision）：VAE 視覺模型</h4>
+<p>
+用一個標準的<b>變分自編碼器</b>（VAE）把每個影格 \(64\times64\times3\) 的像素觀測壓縮成低維潛在向量 \(z\)
+（CarRacing 取 \(N_z=32\)，Doom 取 \(N_z=64\)），訓練目標為重建誤差（\(L^2\)）加上 KL 正則項。
+V 的角色僅止於「空間壓縮」，完全不涉及時間或決策資訊。
+</p>
+</div>
+<div class="box def">
+<h4>M（Memory）：MDN-RNN 記憶模型</h4>
+<p>
+一個 LSTM 搭配<b>混合密度網路</b>（Mixture Density Network）輸出層，學習預測下一時刻潛在向量的機率分佈：
+</p>
+<p class="eqn">\[
+P(z_{t+1}\mid a_t, z_t, h_t)
+\]</p>
+<p>
+其中 \(h_t\) 為 LSTM 隱藏狀態，\(a_t\) 為採取的動作。輸出為多個高斯分佈的混合，並可用<b>溫度參數</b> \(\tau\)
+在取樣時調整不確定性。這正是「時間壓縮」——把「環境如何隨時間演化」也壓縮進一個可微分的遞迴模型中。
+</p>
+</div>
+</div>
+
+<div class="box key">
+<h4>C（Controller）：刻意做到極簡的線性控制器</h4>
+<p>
+Controller 是一個<b>單層線性模型</b>，直接把 \(z_t\) 與 \(h_t\) 串接後映射到動作：
+</p>
+<p class="eqn">\[
+a_t = W_c\,[z_t\;h_t] + b_c
+\]</p>
+<p>
+作者刻意讓 C 盡可能小、盡可能簡單——CarRacing 任務中 C 僅有 <b>867</b> 個參數，
+相對於 VAE 的 4,348,547 個與 MDN-RNN 的 422,368 個參數而言微不足道。
+這個設計哲學是本文最重要的洞見之一：<b>把模型的「容量」與「表達力」都留給 V 和 M，
+而把強化學習演算法真正要解決的「信度分配問題」（credit assignment）限縮在一個極小的搜尋空間裡</b>，
+如此一來即使使用樣本效率較差、但不需要梯度、且易於平行化的<b>演化策略</b>（Evolution Strategies）
+也能有效訓練 C。
+</p>
+</div>
+
+<p>
+三者串接後的推論迴圈可以用一段偽代碼精確描述（原論文 Algorithm，OpenAI Gym 介面）：
+</p>
+<pre>def rollout(controller):
+    obs = env.reset()
+    h = rnn.initial_state()
+    done = False
+    cumulative_reward = 0
+    while not done:
+        z = vae.encode(obs)                  # V：壓縮觀測
+        a = controller.action([z, h])        # C：決策
+        obs, reward, done = env.step(a)
+        cumulative_reward += reward
+        h = rnn.forward([a, z, h])           # M：更新記憶狀態
+    return cumulative_reward</pre>
+
+<h3>1.5.3　訓練方式：CMA-ES 演化策略，而非梯度反傳</h3>
+<p>
+與後續 Dreamer 系列用<b>解析梯度反傳</b>或 <b>REINFORCE</b> 訓練 actor 不同，
+本文使用 <b>Covariance-Matrix Adaptation Evolution Strategy（CMA-ES）</b> 這種<b>無梯度</b>的黑箱優化演算法來演化 C 的權重：
+族群大小 64，每個個體在環境中跑 16 次不同亂數種子取平均累積報酬作為適應度（fitness）。
+這件事之所以可行，正是因為 C 的參數量極小（867 個）——CMA-ES 適合求解至多幾千維的解空間，
+若要直接演化整個端到端網路（V+M+C 共約 470 萬參數）則完全不切實際。
+</p>
+
+<h3>1.5.4　CarRacing-v0 實驗：V 與 M 的貢獻分離驗證</h3>
+<p>
+作者做了一個很有教學意義的消融實驗：先只讓 C 存取 \(z_t\)（不含 \(h_t\)），
+觀察到 agent 雖能沿賽道行駛，但在急彎處會搖擺不穩；再讓 C 同時存取 \(z_t\) 與 \(h_t\)，操控明顯更穩定。
+這證明了 \(z_t\) 只捕捉「當下瞬間」的空間資訊，而 \(h_t\)（M 對未來的預測狀態）才提供了「對未來的期待」，
+兩者合併才能讓控制器做出反射性、不需要顯式規劃的決策 —— 與 1.5.1 節棒球打者的類比前後呼應。
+</p>
+<table>
+<tr><th>方法</th><th>平均分數（100 次隨機試驗）</th></tr>
+<tr><td>DQN</td><td>\(343 \pm 18\)</td></tr>
+<tr><td>A3C（連續動作）</td><td>\(591 \pm 45\)</td></tr>
+<tr><td>A3C（離散動作）</td><td>\(652 \pm 10\)</td></tr>
+<tr><td>OpenAI Gym 排行榜當時最佳解</td><td>\(838 \pm 11\)</td></tr>
+<tr><td>僅用 V（\(z_t\) 直接接線性層）</td><td>\(632 \pm 251\)</td></tr>
+<tr><td>僅用 V + 隱藏層</td><td>\(788 \pm 141\)</td></tr>
+<tr><td><b>完整 V-M-C（本文方法）</b></td><td><b>\(906 \pm 21\)</b>（解出此任務所需的門檻為 900）</td></tr>
+</table>
+<p>
+本文因此成為<b>第一個公開解出 CarRacing-v0</b>（連續 100 次試驗平均分數需 &gt; 900）的方法，
+且直接吃原始 RGB 像素、不需邊緣偵測等人工前處理，也不需堆疊連續幾幀影像。
+</p>
+
+<h3>1.5.5　「在夢境中訓練」：VizDoom Take Cover 實驗</h3>
+<p>
+本文最具啟發性的貢獻，是證明 agent 可以<b>完全不碰真實環境</b>、只在 M 產生的「幻覺」環境中訓練策略，
+再把學到的策略部署回真實環境。要做到這件事，M 除了預測 \(z_{t+1}\)，還需額外預測一個二元的
+<b>結束狀態</b> \(d_{t+1}\)（agent 是否已死亡）：
+</p>
+<p class="eqn">\[
+P(z_{t+1},\,d_{t+1}\mid a_t,\,z_t,\,h_t)
+\]</p>
+<p>
+有了 \(d_{t+1}\)，M 就具備了完整 RL 環境所需的全部要素（下一狀態 + 結束訊號），
+於是可以把 M 包裝成一個標準 <code>gym.Env</code> 介面，讓 agent 完全在這個「潛在空間虛擬環境」（論文稱之為
+<b>DoomRNN</b>）中用 CMA-ES 訓練 C，全程不需要 V 解碼任何真實像素，也不需要真的跑 Doom 遊戲引擎。
+訓練出的策略部署回真實 VizDoom 環境後，存活時間達到 <b>\(1092 \pm 556\)</b> 個時間步，遠超過解出此任務所需的
+750 步門檻。
+</p>
+
+<div class="box compare">
+<h4>「作弊」世界模型：agent 找到 M 的漏洞</h4>
+<p>
+由於 M 只是環境的<b>近似機率模型</b>，agent 在演化過程中會找到「在真實環境中不存在、但在 M 的想像中有效」
+的<b>對抗性策略</b>——例如作者觀察到某些 agent 學會用一種奇特的移動方式，讓 M 想像出的怪物「從不發射火球」，
+即使已經出現火球形成的徵兆，agent 仍能像擁有超能力一樣讓火球「憑空消失」。這類策略在虛擬環境中得分完美，
+但部署回真實環境立刻失敗，表現甚至不如隨機策略。
+</p>
+<p>
+論文用<b>溫度參數 \(\tau\)</b> 系統性地量化了這個「現實 vs. 可利用性」的取捨：
+</p>
+<table>
+<tr><th>溫度 \(\tau\)</th><th>虛擬環境分數</th><th>真實環境分數</th></tr>
+<tr><td>0.10（近乎確定性）</td><td>\(2086 \pm 140\)</td><td>\(193 \pm 58\)</td></tr>
+<tr><td>0.50</td><td>\(2060 \pm 277\)</td><td>\(196 \pm 50\)</td></tr>
+<tr><td>1.00</td><td>\(1145 \pm 690\)</td><td>\(868 \pm 511\)</td></tr>
+<tr><td>1.15</td><td>\(918 \pm 546\)</td><td><b>\(1092 \pm 556\)</b></td></tr>
+<tr><td>1.30</td><td>\(732 \pm 269\)</td><td>\(753 \pm 139\)</td></tr>
+</table>
+<p>
+溫度太低（\(\tau=0.1\)）時 M 幾乎退化成確定性 LSTM，混合密度模型發生「模式崩塌」（mode collapse）——
+怪物永遠不會進入「射擊」這個機率模式，agent 在夢境中可以拿到接近滿分的 2100 分，
+但部署到真實環境立刻崩潰。適度提高溫度（\(\tau\approx1.15\)）反而讓虛擬環境分數<b>下降</b>，
+卻讓真實環境的遷移表現達到最佳——這是一個重要的教學案例：<b>世界模型的「不確定性」本身可以是一種正則化，
+用來對抗控制器對模型缺陷的過度利用</b>。
+</p>
+</div>
+
+<h3>1.5.6　與後續 Dreamer 系列的關係：這篇論文「留下的伏筆」</h3>
+<div class="box key">
+<h4>本文明確指出、後來被 Dreamer 系列逐一解決的侷限</h4>
+<ul>
+<li><b>V/M/C 完全分開訓練</b>——V 是無監督訓練，不知道任務目標是什麼，因此可能學到「與任務無關」的細節
+（論文舉例：VAE 精細重建了 Doom 場景牆上不重要的磚紋，卻無法在 CarRacing 中重建賽道邊緣的重要標線）。
+DreamerV1 之後選擇讓世界模型與 reward 預測<b>聯合訓練</b>，讓表徵學習偏向任務相關特徵，正是針對此侷限的直接回應。</li>
+<li><b>C 只用演化策略、不做梯度反傳穿過 M</b>——論文在 Discussion 中明白寫道：「因為我們把世界模型實作成完全可微分的遞迴計算圖，
+原則上我們或許能夠直接用反向傳播演算法在夢境中訓練 agent，微調其策略以最大化目標函數。」
+這句話幾乎是在<b>預言 DreamerV1</b> 的解析梯度反傳（analytic value gradients）方法。</li>
+<li><b>M 是「隨機模型但非時序上的層級式規劃」</b>——論文承認其方法「像早期的 C–M 系統一樣，逐時間步一步步模擬可能的未來，
+並未享受到人類式的階層規劃或抽象推理的好處」，並援引 Schmidhuber 的 <i>Learning to Think</i> （2015a）框架指出更一般化的可能性——
+這條研究路線後續由 DreamerV2/V3 的離散潛在表徵與更長的想像視野（imagination horizon）部分實現。</li>
+<li><b>世界模型容量有限、會發生災難性遺忘</b>——本文使用的是相對小型的 LSTM，論文明確指出「人腦可以保存數十年甚至數世紀解析度的記憶，
+而我們用反向傳播訓練的神經網路容量有限，且會遭遇災難性遺忘問題」，並列為未來工作方向。
+DreamerV3 的 symlog/symexp 正規化與更大規模的世界模型，可視為對此問題的一種延遲回應。</li>
+</ul>
+</div>
+
+<div class="qa">
+<b>教學重點：為什麼要先讀這篇 2018 年的論文，才讀 Dreamer？</b>
+因為 Dreamer 系列的每一個「創新」，幾乎都可以在這篇論文的 Discussion 段落中找到「作者自己指出的侷限」作為對照組。
+把兩者放在一起讀，可以清楚看出一條「一個侷限被下一代方法解決」的技術演進鏈，而不是把 RSSM、KL balancing、
+symlog 等技巧當成憑空出現的黑盒子技巧。此外，V-M-C 這個「感知—記憶—決策」三分法的直覺框架，
+至今仍是理解任何 model-based RL 架構最快的心智模型（mental model）——這也恰好呼應了論文開頭引用 Forrester 的那句話。
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+<h2 class="sec-title"><span class="num">2.</span> 五篇論文總覽與研究脈絡</h2>
+
+<p>
+在第 1.5 節介紹的 Ha &amp; Schmidhuber（2018）<i>World Models</i> 奠定「感知—記憶—決策」三分法與
+「在夢境中訓練」的基本精神之後，本教材接著完整涵蓋 Dreamer 系列演算法的三個世代（V1 → V2 → V3），
+再延伸到兩篇把 DreamerV3 應用於無人機競速的後續工作。可以視為一條
+「<b>V-M-C 架構與潛在想像的原理提出（2018）→ 用解析梯度取代演化策略、原理形式化（DreamerV1）→ 離散化並攻克 Atari（V2）→
+通用穩健化橫跨 150+ 任務（V3）→ 特定任務模擬驗證（Dream to Fly）→ 真實世界完整部署（SkyDreamer）</b>」
+的技術演進線：
+</p>
+
+<div class="paper-card">
+  <div class="pid">[1] DreamerV1</div>
+  <div class="pmeta">
+    <b>Dream to Control: Learning Behaviors by Latent Imagination</b><br>
+    Hafner, Lillicrap, Ba, Norouzi — ICLR 2020（arXiv:1912.01603）<br>
+    <span class="badge wm">World Model</span><span class="badge rl">連續控制</span>
+    定位：首次提出「純粹在潛在空間中想像」來學習長時程行為，並用<b>解析梯度</b>（analytic gradients）
+    直接反傳價值估計穿過學到的動態模型，在 DeepMind Control Suite 20 個視覺控制任務上超越當時的
+    model-free 與 model-based 方法。
+  </div>
+</div>
+
+<div class="paper-card">
+  <div class="pid">[2] DreamerV2</div>
+  <div class="pmeta">
+    <b>Mastering Atari with Discrete World Models</b><br>
+    Hafner, Lillicrap, Norouzi, Ba — ICLR 2021（arXiv:2010.02193）<br>
+    <span class="badge wm">World Model</span><span class="badge rl">離散動作</span>
+    定位：把潛在表徵從高斯分佈改為<b>類別分佈</b>（categorical latents），搭配 straight-through 梯度與
+    KL balancing，首次讓完全「只在世界模型內部訓練」的 agent 在 Atari 55 款遊戲上達到人類水準。
+  </div>
+</div>
+
+<div class="paper-card">
+  <div class="pid">[3] DreamerV3</div>
+  <div class="pmeta">
+    <b>Mastering Diverse Control Tasks through World Models</b><br>
+    Hafner, Pasukonis, Ba, Lillicrap — <i>Nature</i>, Vol 640 (2025)<br>
+    <span class="badge wm">World Model</span><span class="badge rl">通用 RL 演算法</span>
+    定位：提出「固定超參數、跨 8 大領域 150+ 任務」的通用 Model-Based RL 演算法，
+    並首次讓 agent 從零開始在 Minecraft 中挖到鑽石。
+  </div>
+</div>
+
+<div class="paper-card">
+  <div class="pid">[4] Dream to Fly</div>
+  <div class="pmeta">
+    <b>Dream to Fly: Model-Based Reinforcement Learning for Vision-Based Drone Flight</b><br>
+    Romero, Shenai, Geles, Aljalbout, Scaramuzza — arXiv:2501.14377 (2025)<br>
+    <span class="badge wm">World Model</span><span class="badge vis">Pixel-to-Command</span>
+    定位：把 DreamerV3「原封不動」搬到無人機競速任務，證明 PPO 學不出直接像素到指令的策略，
+    而 DreamerV3 可以，並在模擬 + Hardware-in-the-loop（HIL）中驗證。
+  </div>
+</div>
+
+<div class="paper-card">
+  <div class="pid">[5] SkyDreamer</div>
+  <div class="pmeta">
+    <b>SkyDreamer: Interpretable End-to-End Vision-Based Drone Racing with Model-Based RL</b><br>
+    Verraest, Bahnam, Ferede, de Croon, De Wagter — arXiv:2510.14783 (2025)<br>
+    <span class="badge wm">World Model</span><span class="badge real">Onboard 實機</span>
+    定位：在 Informed Dreamer 架構上加入「特權資訊解碼」與「flight plan 邏輯」，
+    首次做到<b>完全機載、無外部輔助、像素直接輸出馬達指令</b>的冠軍級競速飛行（21 m/s、6 g）。
+  </div>
+</div>
+
+<div class="timeline">
+  <div class="item">
+    <h4>2018.03（v4：2018.05） — <b>World Models</b>（起源論文，Ha &amp; Schmidhuber，見第 1.5 節）</h4>
+    <p>首次提出 V（VAE 視覺）— M（MDN-RNN 記憶）— C（線性控制器）三元件架構，
+    用 CMA-ES 演化策略訓練極小的控制器，並示範 agent 可完全在世界模型產生的「夢境」中訓練後遷移回真實環境
+    （CarRacing-v0、VizDoom Take Cover）。是 Dreamer 系列的直接精神起源。</p>
+  </div>
+  <div class="item">
+    <h4>2019.12 / ICLR 2020 — <b>DreamerV1</b>（本教材論文一：Dream to Control）</h4>
+    <p>RSSM 潛在動態模型 + Actor-Critic 純想像訓練首次提出，用重參數化梯度直接反傳 λ-return，
+    驗證於 20 個 DeepMind Control Suite 連續控制任務，尚不支援離散動作。</p>
+  </div>
+  <div class="item">
+    <h4>2020.10 / ICLR 2021 — <b>DreamerV2</b>（本教材論文二：Mastering Atari with Discrete World Models）</h4>
+    <p>改用離散類別潛在表徵 + straight-through 梯度、KL balancing，
+    是第一個「完全只靠世界模型內部想像訓練」就在 Atari 55 款遊戲達到人類水準的演算法。</p>
+  </div>
+  <div class="item">
+    <h4>2025.04 — <b>DreamerV3</b>（本教材論文三，登上 Nature）</h4>
+    <p>symlog/symexp 符號變換、KL balance + free bits 合併使用、return normalization 等穩健性技巧集大成，
+    固定超參數即可橫跨 8 大領域 150+ 任務，並首次無人類資料挖到 Minecraft 鑽石。</p>
+  </div>
+  <div class="item">
+    <h4>2025.01 — <b>Dream to Fly</b>（本教材論文四）</h4>
+    <p>將 DreamerV3 直接套用於視覺化無人機競速，證明 model-based RL 相較 PPO 在 pixel-to-command 任務上具壓倒性樣本效率優勢。仍停留在模擬與 HIL 階段。</p>
+  </div>
+  <div class="item">
+    <h4>2025.10 — <b>SkyDreamer</b>（本教材論文五）</h4>
+    <p>在 Informed Dreamer 基礎上引入特權觀測解碼、flight plan 向量解決視覺歧義、
+    直接輸出馬達 PWM 而非 CTBR，並用 CycleGAN/StochGAN 縮小視覺 sim-to-real gap，
+    達成完全機載的冠軍級競速飛行。</p>
+  </div>
+</div>
+
+<div class="box key">
+<h4>一句話看懂 Dreamer 三代的核心差異</h4>
+<table>
+<tr><th>版本</th><th>潛在表徵</th><th>Actor 梯度來源</th><th>世界模型訓練方式</th><th>驗證領域</th></tr>
+<tr><td>DreamerV1</td><td>對角高斯（連續）</td><td>解析梯度（reparameterization）直接反傳穿過動態模型</td><td>與 actor-critic 交錯訓練</td><td>20 個連續控制任務（DMC）</td></tr>
+<tr><td>DreamerV2</td><td>32×32 類別分佈（離散）</td><td>Reinforce 為主 + straight-through 梯度混合</td><td>與 actor-critic <b>分離</b>訓練</td><td>Atari 55 款遊戲（離散動作）</td></tr>
+<tr><td>DreamerV3</td><td>類別分佈 + 1% unimix</td><td>Reinforce（REINFORCE 估計器）+ return normalization</td><td>分離訓練，symlog/symexp 穩健化</td><td>8 大領域 150+ 任務（連續＋離散）</td></tr>
+</table>
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+<h2 class="sec-title"><span class="num">3.</span> DreamerV1：Dream to Control（潛在想像的起點）</h2>
+
+<h3>3.1　問題設定：POMDP 與三個核心分佈</h3>
+<p>
+DreamerV1 把視覺控制問題形式化為部分可觀測 MDP（POMDP）：離散時間步 \(t\in[1,T]\)，
+動作 \(a_t\sim p(a_t\mid o_{\le t},a_{<t})\)，高維觀測與純量報酬
+\(o_t,r_t\sim p(o_t,r_t\mid o_{<t},a_{<t})\) 由未知環境產生。目標是學到一個 agent，
+最大化期望累積報酬 \(\mathbb E_p\big[\sum_{t=1}^T r_t\big]\)。
+</p>
+<p>
+其潛在動態模型（latent dynamics）由三個組件構成，這是後續 RSSM 家族的雛形：
+</p>
+<p class="eqn">\[
+\text{Representation model: } p(s_t\mid s_{t-1},a_{t-1},o_t) \qquad
+\text{Transition model: } q(s_t\mid s_{t-1},a_{t-1}) \qquad
+\text{Reward model: } q(r_t\mid s_t)
+\]</p>
+<p>
+論文用 \(p\) 表示「會產生真實環境樣本」的分佈，\(q\) 表示「用於潛在想像」的近似分佈。
+關鍵在於 <b>transition model</b>：它完全不依賴當前觀測 \(o_t\)，只從前一步的模型狀態與動作預測下一狀態，
+這使得 agent 可以在完全不生成/觀察影像的情況下，於潛在空間中平行想像成千上萬條軌跡，
+記憶體佔用極小、速度極快 —— 這正是「world model 支撐大量離線想像訓練」概念最早的完整實現。
+</p>
+
+<h3>3.2　核心貢獻：用解析梯度學習長時程行為</h3>
+<p>
+DreamerV1 定義了一個「想像 MDP」：從真實經驗中取樣出的模型狀態 \(s_t\) 出發，
+之後的軌跡完全由學到的模型生成：
+</p>
+<p class="eqn">\[
+s_\tau \sim q(s_\tau\mid s_{\tau-1},a_{\tau-1}), \qquad
+r_\tau \sim q(r_\tau\mid s_\tau), \qquad
+a_\tau \sim q(a_\tau\mid s_\tau)
+\]</p>
+<p>目標是最大化想像報酬的期望：\(\mathbb E_q\big[\sum_{\tau=t}^{\infty}\gamma^{\tau-t}r_\tau\big]\)。</p>
+
+<p>Action model 與 Value model 分別為：</p>
+<p class="eqn">\[
+\text{Action model: } a_\tau\sim q_\phi(a_\tau\mid s_\tau)
+\qquad
+\text{Value model: } v_\psi(s_\tau)\approx \mathbb E_{q(\cdot\mid s_\tau)}\Big[\sum_{\tau=t}^{t+H}\gamma^{\tau-t}r_\tau\Big]
+\]</p>
+
+<p>
+Action model 輸出 tanh 變換過的高斯分佈，並用<b>重參數化技巧</b>（reparameterization）取樣，
+使動作可視為神經網路輸出的確定性函數：
+</p>
+<p class="eqn">\[
+a_\tau = \tanh\big(\mu_\phi(s_\tau) + \sigma_\phi(s_\tau)\,\epsilon\big), \qquad \epsilon\sim \mathcal N(0,\mathbb I)
+\]</p>
+
+<div class="box key">
+<h4>DreamerV1 最大的特色：解析梯度反傳（Analytic Value Gradients）</h4>
+<p>
+因為 transition/reward/action/value 全部都是可微分的神經網路，價值估計 \(V_\lambda(s_\tau)\)
+對 action model 參數 \(\phi\) 的梯度可以<b>直接解析計算</b>，不需要像 policy-gradient 方法
+（A3C、PPO）那樣依賴高方差的 REINFORCE 估計器：
+</p>
+<p class="eqn">\[
+\nabla_\phi\, \mathbb E_{q_\theta,q_\phi}\Big(\sum_{\tau=t}^{t+H}V_\lambda(s_\tau)\Big)
+\]</p>
+<p>
+這種「透過學到的動態模型反傳解析梯度」的作法，與 DDPG/SAC 等 deterministic actor-critic 方法精神相通，
+但 DreamerV1 進一步把梯度<b>穿過多步的想像動態</b>，而非僅止於單步 Q 值，因此能更有效率地學習長時程行為。
+</p>
+</div>
+
+<h3>3.3　價值估計：\(V_R\)、\(V_N^k\)、\(V_\lambda\) 三種估計子</h3>
+<p>給定有限想像視野 \(H\)，狀態價值可用三種方式估計，在偏差與方差間取捨：</p>
+<p class="eqn">\[
+V_R(s_\tau) \doteq \mathbb E_{q_\theta,q_\phi}\Big(\sum_{n=\tau}^{t+H}r_n\Big)
+\]</p>
+<p class="eqn">\[
+V_N^k(s_\tau) \doteq \mathbb E_{q_\theta,q_\phi}\Big(\sum_{n=\tau}^{h-1}\gamma^{n-\tau}r_n + \gamma^{h-\tau}v_\psi(s_h)\Big),
+\quad h=\min(\tau+k,\,t+H)
+\]</p>
+<p class="eqn">\[
+V_\lambda(s_\tau) \doteq (1-\lambda)\sum_{n=1}^{H-1}\lambda^{n-1}V_N^n(s_\tau) + \lambda^{H-1}V_N^H(s_\tau)
+\]</p>
+<p>
+\(V_R\) 直接加總視野內報酬、忽略視野外的一切——這樣完全不需要 value model，
+但代價是視野外的長期收益被完全捨棄，導致「短視」行為。\(V_N^k\) 用學到的 value model 估計 \(k\) 步之後的價值，
+\(V_\lambda\) 則是不同 \(k\) 的指數加權平均，是 DreamerV1 實際採用的估計子。
+</p>
+
+<div class="box compare">
+<h4>關鍵實驗：為什麼一定要學 Value Model？</h4>
+<p>
+論文比較了「Dreamer（用 \(V_\lambda\)）」、「No value（只用 \(V_R\)，不學 value model）」、
+與「PlaNet（線上規劃、也只用 \(V_R\)）」在不同想像視野 \(H\in\{10,20,30,40\}\) 下的最終表現（Fig. 4）。
+結果顯示：<b>只要學了 value model，Dreamer 對想像視野長度幾乎不敏感</b>——即使 \(H=10\) 也能維持高分；
+而不學 value model 的兩種方法則表現隨視野縮短而急遽下滑，證明了「用 value model 估計視野外報酬」
+是解決短視問題的關鍵設計。
+</p>
+</div>
+
+<h3>3.4　世界模型的三種學習目標（Representation Learning）</h3>
+<p>DreamerV1 系統性比較了三種訓練 world model 的方式，這是與後續版本銜接的重要基礎：</p>
+<table>
+<tr><th>方法</th><th>核心公式</th><th>特點</th></tr>
+<tr>
+<td>影像重建（Reconstruction，沿用 PlaNet）</td>
+<td>\(\mathcal J_{\text{REC}}\doteq\mathbb E_p\Big(\sum_t \mathcal J_O^t+\mathcal J_R^t+\mathcal J_D^t\Big)\)，
+其中 \(\mathcal J_D^t \doteq -\beta\,\mathrm{KL}\big[p(s_t\mid s_{t-1},a_{t-1},o_t)\,\|\,q(s_t\mid s_{t-1},a_{t-1})\big]\)</td>
+<td>本質是變分下界（ELBO/VIB），表現最佳，是 DreamerV1 預設方法</td>
+</tr>
+<tr>
+<td>對比估計（Contrastive / NCE）</td>
+<td>\(\mathcal J_S^t \doteq \ln q(s_t\mid o_t) - \ln\sum_{o'}q(s_t\mid o')\)</td>
+<td>不必重建像素、只需讓狀態可從影像預測且保持多樣性，效果約解決半數任務</td>
+</tr>
+<tr>
+<td>純報酬預測（Reward prediction）</td>
+<td>僅用 \(q(r_t\mid s_t)\) 提供學習訊號</td>
+<td>實驗中不足以學到有用表徵，尤其在報酬稀疏時</td>
+</tr>
+</table>
+<p>
+這個消融結果（Fig. 8）直接啟發了後續 DreamerV2／V3 都預設採用「影像重建」作為表徵學習目標，
+但也保留了「重建目標可以替換」的彈性設計精神。
+</p>
+
+<h3>3.5　實驗結果摘要</h3>
+<table>
+<tr><th>項目</th><th>DreamerV1 設定</th></tr>
+<tr><td>測試任務</td><td>DeepMind Control Suite 20 個視覺控制任務（連續動作，\(64\times64\times3\) 影像）</td></tr>
+<tr><td>平均分數（\(5\times10^6\) 步）</td><td>823（超越 D4PG 在 \(10^8\) 步下的 786，且訓練資料量少 20 倍）</td></tr>
+<tr><td>訓練時間</td><td>約 3 小時 / \(10^6\) 環境步（單張 V100），PlaNet 需 11 小時、D4PG 需 24 小時</td></tr>
+<tr><td>Actor-Critic 超參數</td><td>\(\gamma=0.99,\ \lambda=0.95\)，想像視野 \(H=15\)</td></tr>
+<tr><td>侷限</td><td>僅支援連續動作（tanh-Gaussian policy）；離散動作與提早終止任務尚未完整支援</td></tr>
+</table>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+<h2 class="sec-title"><span class="num">4.</span> DreamerV2：離散世界模型與 Atari 人類水準</h2>
+
+<h3>4.1　核心改變：類別潛在表徵取代高斯分佈</h3>
+<p>
+DreamerV2 的世界模型延續 RSSM 架構，但把隨機潛在狀態從 DreamerV1／PlaNet 的<b>對角高斯分佈</b>
+改為<b>一組類別分佈</b>（32 個類別變數、每個 32 類），這是 DreamerV2 相對 V1 最關鍵的架構改變：
+</p>
+<p class="eqn">\[
+\text{RSSM}
+\begin{cases}
+\text{Recurrent model: } & h_t = f_\phi(h_{t-1},z_{t-1},a_{t-1})\\
+\text{Representation model（後驗）: } & z_t \sim q_\phi(z_t\mid h_t,x_t)\\
+\text{Transition predictor（先驗）: } & \hat z_t \sim p_\phi(\hat z_t\mid h_t)\\
+\text{Image predictor: } & \hat x_t \sim p_\phi(\hat x_t\mid h_t,z_t)\\
+\text{Reward predictor: } & \hat r_t \sim p_\phi(\hat r_t\mid h_t,z_t)\\
+\text{Discount predictor: } & \hat\gamma_t \sim p_\phi(\hat\gamma_t\mid h_t,z_t)
+\end{cases}
+\]</p>
+<p>
+注意此處的符號慣例與 DreamerV3（見第 5 節）已幾乎一致——事實上 DreamerV3 的 RSSM 命名與結構
+就是直接沿用 DreamerV2 這裡定義的「Recurrent model / Representation model（後驗）/ Transition predictor（先驗）」
+三件式架構，只是 DreamerV3 額外加上了 1% unimix 與 free bits。
+</p>
+
+<div class="box def">
+<h4>為什麼類別分佈比高斯分佈更適合？（論文提出的四個假說）</h4>
+<ul>
+<li><b>先驗更容易擬合後驗</b>：類別分佈的混合仍是類別分佈，先驗 \(p_\phi(\hat z_t\mid h_t)\)
+原則上可以完美匹配後驗的混合分佈；而高斯先驗無法精確匹配高斯混合，難以表達「下一幀可能是好幾種不同結果之一」的多模態變化（例如轉角後可能出現的不同場景）。</li>
+<li><b>稀疏性有利泛化</b>：32 個類別變數各取 32 類中的 1 類，展平後得到長度 1024、僅 32 個位元為 1 的稀疏二元向量，這種稀疏表徵可能有助於類似 dropout 的正則化效果。</li>
+<li><b>Straight-through 梯度可能更好優化</b>：不像重參數化梯度會保留一個可能導致梯度爆炸/消失的縮放項，straight-through 估計器結構更簡單。</li>
+<li><b>類別變數可能是更好的歸納偏差</b>：適合表達 Atari 遊戲中「非平滑」的變化，例如進入新房間、道具/敵人消失等離散事件，比單峰連續分佈更自然。</li>
+</ul>
+</div>
+
+<h3>4.2　Straight-Through 梯度：如何對「取樣」這個不可微分操作反傳梯度</h3>
+<p>由於類別分佈的取樣（\(\mathrm{argmax}\) 或 one-hot 抽樣）本身不可微分，DreamerV2 採用 straight-through 估計器：</p>
+<pre>sample = one_hot(draw(logits))            # 取樣結果本身不帶梯度
+probs  = softmax(logits)                  # 我們真正想要梯度的對象
+sample = sample + probs - stop_grad(probs)  # 前向傳播值不變，反向傳播梯度視同對 probs 微分</pre>
+<p>
+這個技巧的巧妙之處在於：前向計算時 \(\text{sample} = \text{one\_hot}(\cdot)\)（因為
+\(\text{probs}-\text{stop\_grad}(\text{probs})=0\)），但反向傳播時梯度視為直接對 \(\text{probs}=\mathrm{softmax}(\text{logits})\)
+微分，等於「假裝取樣操作是恆等函數」讓梯度直接穿透，因此稱為 straight-through gradient。
+</p>
+
+<h3>4.3　世界模型損失函數與 KL Balancing</h3>
+<p>所有世界模型組件聯合最佳化以下目標（本質是條件於動作序列的隱馬可夫模型變分下界 / 序列 VAE）：</p>
+<p class="eqn">\[
+\mathcal L(\phi) \doteq \mathbb E_{q_\phi(z_{1:T}\mid a_{1:T},x_{1:T})}\Big[\sum_{t=1}^{T}
+\underbrace{-\ln p_\phi(x_t\mid h_t,z_t)}_{\text{image log loss}}
+\underbrace{-\ln p_\phi(r_t\mid h_t,z_t)}_{\text{reward log loss}}
+\underbrace{-\ln p_\phi(\gamma_t\mid h_t,z_t)}_{\text{discount log loss}}
++\beta\,\underbrace{\mathrm{KL}\big[q_\phi(z_t\mid h_t,x_t)\,\|\,p_\phi(z_t\mid h_t)\big]}_{\text{KL loss}}
+\Big]
+\]</p>
+<p>Atari 用 \(\beta=0.1\)，連續控制用 \(\beta=1.0\)。</p>
+
+<div class="box eq-note">
+<h4>KL Balancing：DreamerV2 首創、DreamerV3 沿用的關鍵技巧</h4>
+<p>
+標準 ELBO 中的 KL 項同時扮演兩個角色：訓練先驗去逼近後驗、以及正則化後驗不要偏離先驗太多。
+但動態（transition）模型一開始學得不準，若把後驗也拉向一個訓練不佳的先驗，會嚴重拖累學習。
+DreamerV2 的解法是讓先驗與後驗用<b>不同的「有效學習率」</b>去最小化同一個 KL：
+</p>
+<pre>kl_loss = alpha * compute_kl(stop_grad(posterior), prior)
+        + (1 - alpha) * compute_kl(posterior, stop_grad(prior))</pre>
+<p>
+其中 \(\alpha=0.8\)。前項只更新先驗（讓它更快去逼近後驗），後項只更新後驗（用較慢的權重正則化它靠向先驗）。
+這種「不對稱加權同一個 KL 散度」的做法，正是本教材第 6 節介紹的 DreamerV3
+「\(\mathcal L_{\text{dyn}}\) 與 \(\mathcal L_{\text{rep}}\) 分別用停止梯度」的直接前身——
+DreamerV3 進一步把這個機制與 free bits 結合，形式略有不同但精神完全繼承自 DreamerV2 的 KL balancing。
+</p>
+</div>
+
+<h3>4.4　Actor-Critic：Reinforce 與 Straight-Through 梯度的混合</h3>
+<p>Critic 用 λ-target（遞迴定義，等價於本教材 3.3 節 \(V_\lambda\) 的離散時間版本）：</p>
+<p class="eqn">\[
+V_t^\lambda \doteq \hat r_t + \hat\gamma_t
+\begin{cases}
+(1-\lambda)v_\xi(\hat z_{t+1}) + \lambda V_{t+1}^\lambda, & t<H\\
+v_\xi(\hat z_H), & t=H
+\end{cases}
+\]</p>
+<p>Actor loss 結合兩種梯度估計，這是 DreamerV2 相對 V1 的另一項關鍵演算法貢獻：</p>
+<p class="eqn">\[
+\mathcal L(\psi) \doteq \mathbb E_{p_\phi,p_\psi}\Big[\sum_{t=1}^{H-1}
+\underbrace{-\rho\,\ln p_\psi(\hat a_t\mid \hat z_t)\,\mathrm{sg}(V_t^\lambda - v_\xi(\hat z_t))}_{\text{reinforce}}
+\underbrace{-(1-\rho)\,V_t^\lambda}_{\text{dynamics backprop}}
+\underbrace{-\eta\,\mathrm H[a_t\mid \hat z_t]}_{\text{entropy 正則化}}
+\Big]
+\]</p>
+
+<div class="box compare">
+<h4>為什麼 Atari 用 Reinforce、連續控制用動態反傳？</h4>
+<p>
+DreamerV1 完全依賴「動態反傳」（穿過 tanh-Gaussian 重參數化梯度）；但 DreamerV2 因為改用<b>離散類別動作</b>
+（Atari 的動作空間本身離散），straight-through 梯度雖然可以反傳，卻是<b>有偏但低方差</b>的估計。
+論文消融實驗（Table 2、Figure I.1）發現：
+</p>
+<ul>
+<li><b>Atari（離散動作）</b>：\(\rho=1\)（純 Reinforce）明顯優於混合或純動態反傳，因為 Reinforce 無偏，能收斂到更好的解，設定 \(\eta=10^{-3}\)。</li>
+<li><b>連續控制</b>：\(\rho=0\)（純動態反傳）明顯更好，延續 DreamerV1 的做法，設定 \(\eta=10^{-4}\)。</li>
+</ul>
+<p>這個「依任務類型切換梯度估計子」的權衡，到了 DreamerV3 才被 REINFORCE + return normalization 的統一方案取代，不再需要手動切換 \(\rho\)。</p>
+</div>
+
+<h3>4.5　里程碑成果：Atari 人類水準（僅靠世界模型內部訓練）</h3>
+<p>
+DreamerV2 是<b>第一個完全只在分離訓練的世界模型內部學習行為</b>、就能在 Atari 55 款遊戲基準上達到人類水準的演算法
+（Gamer Median Normalized Score 2.15，Clipped Record Mean 0.28），並在相同運算預算（單張 V100、200M 環境步、10 天）下超越
+Rainbow 與 IQN 兩個強力 model-free 單 GPU 演算法。訓練期間，agent 從 468B 個「想像出來」的潛在狀態中學習，
+是實際從環境接收的 5000 萬筆輸入的 <b>10,000 倍</b>，具體展現了世界模型帶來的樣本效率優勢。
+</p>
+
+<h3>4.6　消融實驗一覽</h3>
+<table>
+<tr><th>移除的技巧</th><th>對 Clipped Record Mean 的影響</th></tr>
+<tr><td>Image gradients（影像重建梯度）</td><td>災難性下降（0.28 → 0.01），世界模型高度依賴影像訊號學表徵</td></tr>
+<tr><td>Policy Reinforce（改純 straight-through）</td><td>明顯下降（0.28 → 0.15），證明 Atari 上 Reinforce 是主要梯度來源</td></tr>
+<tr><td>KL Balancing</td><td>明顯下降（0.28 → 0.16）</td></tr>
+<tr><td>Discrete latents（改回高斯）</td><td>明顯下降（0.28 → 0.19）</td></tr>
+<tr><td>Reward gradients</td><td>幾乎無影響，甚至部分任務停止後表現更好 —— 暗示表徵不必特化於過去報酬，泛化性更好</td></tr>
+</table>
+
+<div class="qa">
+<b>與 MuZero、SimPLe 的概念對照</b>　論文 Table 3 指出：SimPLe 與 DreamerV2 一樣做「影像建模」，
+但 SimPLe 直接在像素空間預測下一幀（而非潛在空間），效率較低；MuZero 則完全不做影像建模，
+只學習與任務高度特化的價值/報酬序列模型，搭配 MCTS 規劃，效能雖強但需要龐大工程與運算資源
+（單 GPU 需 2 個月以上），且程式碼未公開。DreamerV2 用單一 GPU、10 天、22M 參數即可重現，
+是可及性（accessibility）與效能兼顧的重要里程碑。
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+<h2 class="sec-title"><span class="num">5.</span> DreamerV3：通用世界模型架構</h2>
+
+<h3>5.1　RSSM：Recurrent State-Space Model</h3>
+<p>
+DreamerV3 的世界模型由六個組件構成，全部共用參數 \(\phi\)：
+</p>
+
+<table>
+<tr><th>組件</th><th>數學表示</th><th>功能</th></tr>
+<tr><td>Sequence model（序列模型）</td><td>\(h_t = f_\phi(h_{t-1}, z_{t-1}, a_{t-1})\)</td><td>用 GRU 遞迴更新確定性狀態 \(h_t\)</td></tr>
+<tr><td>Encoder（編碼器）</td><td>\(z_t \sim q_\phi(z_t \mid h_t, x_t)\)</td><td>把觀測 \(x_t\) 壓成隨機潛在表徵</td></tr>
+<tr><td>Dynamics predictor（動態預測器）</td><td>\(\hat z_t \sim p_\phi(\hat z_t \mid h_t)\)</td><td>「不看觀測」預測下一潛在狀態，是想像式訓練的關鍵</td></tr>
+<tr><td>Reward predictor</td><td>\(\hat r_t \sim p_\phi(\hat r_t \mid h_t, z_t)\)</td><td>預測即時報酬</td></tr>
+<tr><td>Continue predictor</td><td>\(\hat c_t \sim p_\phi(\hat c_t \mid h_t, z_t)\)</td><td>預測 episode 是否終止</td></tr>
+<tr><td>Decoder（解碼器）</td><td>\(\hat x_t \sim p_\phi(\hat x_t \mid h_t, z_t)\)</td><td>重建觀測，強迫潛在表徵保留關鍵資訊</td></tr>
+</table>
+
+<div class="box def">
+<h4>定義 3.1　為什麼需要「Dynamics predictor」與「Encoder」兩套潛在表徵？</h4>
+<p>
+Encoder 產生的 \(z_t\) 需要「看到」真實觀測 \(x_t\)，只能在訓練階段使用；
+而在想像（imagination）階段，agent 必須連續預測數十步未來，卻沒有真實影像可看。
+因此 Dynamics predictor \(p_\phi(\hat z_t\mid h_t)\) 學會「純粹由過去狀態猜測」潛在表徵，
+其訓練目標就是去逼近 Encoder 產生的 \(z_t\)（見 3.2 節的 dynamics loss）。
+這正是 model-based RL 能夠「離線做百萬步想像訓練」而不必真的操作環境的關鍵機制。
+</p>
+</div>
+
+<h3>5.2　世界模型損失函數</h3>
+<p>整體世界模型損失是三項的加權和：</p>
+<p class="eqn">\[
+\mathcal{L}(\phi) \doteq \mathbb{E}_{q_\phi}\left[
+\sum_{t=1}^{T} \Big(\beta_{\text{pred}}\, \mathcal{L}_{\text{pred}}(\phi)
++ \beta_{\text{dyn}}\, \mathcal{L}_{\text{dyn}}(\phi)
++ \beta_{\text{rep}}\, \mathcal{L}_{\text{rep}}(\phi)\Big)
+\right]
+\]</p>
+<p>其中 \(\beta_{\text{pred}}=1,\ \beta_{\text{dyn}}=1,\ \beta_{\text{rep}}=0.1\)（跨所有領域固定，不需調參）。</p>
+
+<p class="eqn">\[
+\mathcal{L}_{\text{pred}}(\phi) \doteq
+-\log p_\phi(x_t\mid z_t,h_t) - \log p_\phi(r_t\mid z_t,h_t) - \log p_\phi(c_t\mid z_t,h_t)
+\]</p>
+<p class="eqn">\[
+\mathcal{L}_{\text{dyn}}(\phi) \doteq \max\Big(1,\ \mathrm{KL}\big[\mathrm{sg}(q_\phi(z_t\mid h_t,x_t)) \;\|\; p_\phi(z_t\mid h_t)\big]\Big)
+\]</p>
+<p class="eqn">\[
+\mathcal{L}_{\text{rep}}(\phi) \doteq \max\Big(1,\ \mathrm{KL}\big[q_\phi(z_t\mid h_t,x_t) \;\|\; \mathrm{sg}(p_\phi(z_t\mid h_t))\big]\Big)
+\]</p>
+
+<div class="box eq-note">
+<h4>解讀：KL Balancing 與 Free Bits</h4>
+<ul>
+<li><b>停止梯度算子 \(\mathrm{sg}(\cdot)\)</b>：dynamics loss 只更新「預測器」去逼近固定住的 encoder 輸出；representation loss 則反過來，只更新 encoder 讓其輸出更容易被預測器猜到。這種「不對稱」設計稱為 <b>KL balancing</b>，避免兩者互相追逐造成訓練不穩定。</li>
+<li><b>Free bits</b>：\(\max(1, \cdot)\) 把 KL 損失下限鎖在 1 nat（約 1.44 bits）。當 KL 已經很小時就不再懲罰，避免 posterior collapse（潛在表徵退化成與輸入無關的常數），這是深度變分自編碼器（VAE）訓練中常見的技巧。</li>
+</ul>
+</div>
+
+<h3>5.3　Actor-Critic：在潛在空間中「做夢」</h3>
+<p>
+給定起始模型狀態，actor 與 world model 聯手在潛在空間生成想像軌跡
+\(s_{1:T}, a_{1:T}, r_{1:T}, c_{1:T}\)，其中 \(T=16\)（imagination horizon）。
+</p>
+<p class="eqn">\[
+\text{Actor: } a_t \sim \pi_\theta(a_t\mid s_t)
+\qquad\qquad
+\text{Critic: } v_\psi(R_t\mid s_t)
+\]</p>
+
+<p>Critic 學習 λ-return（結合多步預測報酬與自身估計值，兼顧偏差與方差）：</p>
+<p class="eqn">\[
+R_t^{\lambda} \doteq r_t + \gamma c_t\big[(1-\lambda)v_t + \lambda R_{t+1}^{\lambda}\big], \qquad
+R_T^{\lambda} \doteq v_T, \qquad \gamma = 0.997
+\]</p>
+
+<p>Actor 用 REINFORCE 估計器搭配 return 正規化來更新：</p>
+<p class="eqn">\[
+\mathcal{L}(\theta) \doteq -\sum_{t=1}^{T} \mathrm{sg}\!\left(\frac{R_t^{\lambda}-v_t}{\max(1,S)}\right)\log \pi_\theta(a_t\mid s_t)
+\;+\; \eta\, \mathrm{H}\big[\pi_\theta(a_t\mid s_t)\big]
+\]</p>
+<p>其中 \(S \doteq \mathrm{EMA}\big(\mathrm{Per}(R^{\lambda},95) - \mathrm{Per}(R^{\lambda},5),\,0.99\big)\) 是用 5–95 百分位差 + 指數移動平均估計的 return 尺度，\(\eta=3\times10^{-4}\) 是固定的熵正則化係數。</p>
+
+<div class="box key">
+<h4>關鍵直覺：為什麼「除以 \(\max(1,S)\)」很重要？</h4>
+<p>
+不同任務的報酬尺度可能相差好幾個數量級（Atari 得分 vs. 機器人稀疏 +1 報酬）。
+若直接對 advantage 做標準化（除以標準差），在報酬極稀疏時標準差趨近 0，會過度放大雜訊。
+DreamerV3 改為對 <b>return</b> 做「只縮小過大幅值、保留小幅值不變」的正規化，
+同時用固定熵係數 \(\eta\) 就能在探索不足（稀疏報酬）與過度隨機（密集報酬）之間自動取得平衡，
+這正是「單一超參數組合橫跨 150+ 任務」得以成立的關鍵設計之一。
+</p>
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+<h2 class="sec-title"><span class="num">6.</span> DreamerV3 的穩健性技巧</h2>
+
+<p>DreamerV3 論文的消融實驗（Fig. 6a）顯示，以下四項技巧對跨領域穩健性缺一不可：</p>
+
+<h3>6.1　Symlog 變換：處理跨尺度的觀測 / 報酬</h3>
+<p class="eqn">\[
+\mathrm{symlog}(x) \doteq \mathrm{sign}(x)\log(|x|+1), \qquad
+\mathrm{symexp}(x) \doteq \mathrm{sign}(x)\big(\exp(|x|)-1\big)
+\]</p>
+<p>網路實際學習的是目標的 symlog 變換版本，讀出時再用 symexp 反轉：</p>
+<p class="eqn">\[
+\mathcal{L}(\theta) \doteq \tfrac{1}{2}\big(f(x,\theta)-\mathrm{symlog}(y)\big)^2,
+\qquad \hat y \doteq \mathrm{symexp}\big(f(x,\theta)\big)
+\]</p>
+<p>
+symlog 在原點附近近似恆等函數（不影響小數值學習），但能壓縮極大或極小的數值，
+避免用平方誤差（squared loss）預測大目標時梯度爆炸，同時比 L1/Huber loss 收斂更快。
+</p>
+
+<h3>6.2　Symexp Two-Hot Loss：把回歸問題變分類問題</h3>
+<p>
+Reward 與 Critic 的輸出被離散成指數分佈的 bins \(B=\mathrm{symexp}([-20,\dots,+20])\)，
+目標值用「兩點加權」（two-hot）編碼後，以交叉熵訓練：
+</p>
+<p class="eqn">\[
+\mathcal{L}(\theta) \doteq -\,\mathrm{twohot}(y)^\top \log \mathrm{softmax}\big(f(x,\theta)\big)
+\]</p>
+<p>
+好處是梯度大小完全由「分類機率誤差」決定，與目標的實際數值尺度<b>解耦</b>，
+比起直接做回歸更穩定，尤其適合報酬分佈可能多峰、且跨數個數量級的情況（如 Minecraft 稀疏里程碑報酬 vs. Atari 密集分數）。
+</p>
+
+<h3>6.3　1% Unimix：避免類別分佈退化</h3>
+<p>Encoder、Dynamics predictor 與 Actor 的類別分佈都混合 99% 神經網路輸出 + 1% 均勻分佈，確保機率永不為 0，KL 散度數值穩定，梯度也不會消失。</p>
+
+<h3>6.4　消融結果一覽</h3>
+<table>
+<tr><th>移除的技巧</th><th>對 14-task 平均效能的影響</th></tr>
+<tr><td>KL balance + free bits</td><td>影響最大，訓練最不穩定</td></tr>
+<tr><td>Return normalization</td><td>次之，稀疏報酬任務探索失效</td></tr>
+<tr><td>Symexp two-hot（改回 Huber）</td><td>報酬跨尺度時效能明顯下降</td></tr>
+<tr><td>Observation symlog</td><td>視覺複雜度不同的環境難以兼顧</td></tr>
+<tr><td>全部移除</td><td>幾乎無法學習</td></tr>
+</table>
+
+<h3>6.5　里程碑成果：Minecraft 鑽石任務</h3>
+<p>
+在完全沒有人類資料、沒有課程學習（curriculum）的條件下，DreamerV3 是第一個能從零開始、
+在 100M 環境步數內完成「原木 → 木鎬 → 石鎬 → 鐵鎬 → 鑽石」12 個里程碑的演算法，
+每次訓練皆能穩定挖到鑽石（10 個種子皆成功），相較 IMPALA、Rainbow 等基準最多只能推進到鐵鎬階段。
+這個結果之所以重要，是因為它證明了世界模型的「無監督重建目標」（而非任務專屬的 reward/value 梯度）
+足以支撐長時間跨度、極稀疏報酬下的探索。
+</p>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+<h2 class="sec-title"><span class="num">7.</span> Dream to Fly：從模擬到視覺化無人機競速</h2>
+
+<h3>7.1　問題設定：像素直接映射到 CTBR 指令</h3>
+<p>
+Dream to Fly 把無人機競速定義為標準 MDP \((\mathcal{X}, \mathcal{A}, P, R, \gamma)\)：
+狀態 \(x_k\) 就是機載相機的原始 RGB 影像；動作 \(a_k = [c,\omega_x,\omega_y,\omega_z]\)
+為「集體推力 + 機體角速度」（Collective Thrust and Body Rates, CTBR），
+這是專業競速飛手常用的操控介面，比起「位置/速度指令」更貼近底層控制，能發揮更高機動性。
+</p>
+<p class="eqn">\[
+\pi_\theta^{*} = \arg\max_{\pi}\ \mathbb{E}\left[\sum_{k=0}^{\infty}\gamma^k r(k)\right]
+\]</p>
+
+<h3>7.2　獎勵函數設計</h3>
+<p class="eqn">\[
+r(k)=
+\begin{cases}
+-4.0, & \text{碰撞（collision）}\\[4pt]
++10, & \text{通過閘門（gate passed）}\\[4pt]
+b_1\big(\lVert \mathbf g_k-\mathbf p_{k-1}\rVert - \lVert \mathbf g_k-\mathbf p_k\rVert\big) - b_2\lVert \boldsymbol\omega_k\rVert, & \text{其他}
+\end{cases}
+\]</p>
+<p>
+其中 \(b_1=1.0,\ b_2=0.01\)。第一項是「進度獎勵」（progress term）——只要靠近目標閘門就給正報酬，
+<b>不限制飛行路徑必須貼合預設航點</b>，讓 agent 有空間自行發現更有效率的軌跡；
+第二項則懲罰過大角速度，避免震盪或不穩定機動。
+</p>
+
+<div class="box compare">
+<h4>PPO vs. DreamerV3：直接像素輸入的訓練曲線對比</h4>
+<p>
+論文在 Circle / Kidney / Figure-8 三種賽道上，以相同的原始像素輸入比較 PPO 與 DreamerV3：
+<b>PPO 在 1000 萬步互動內幾乎沒有學到任何有效飛行行為</b>（reward 曲線幾乎持平於谷底），
+而 DreamerV3 能穩定收斂並飛出完整賽道。這直接驗證了 Model-Based RL 在高維像素輸入、
+即時控制任務上的樣本效率優勢 —— 世界模型讓 agent 可以在「想像」中訓練上千萬步，
+而不必真的渲染那麼多影格。
+</p>
+</div>
+
+<h3>7.3　四旋翼名義動力學（Nominal Dynamics）</h3>
+<p>狀態 \(\vec x = [\vec p_I, \vec q_{IB}, \vec v_I]^\top\)（位置、機體到慣性系的單位四元數、線速度）：</p>
+<p class="eqn">\[
+\dot{\vec p} = \vec v, \qquad
+\dot{\vec v} = \vec g + \frac{\mathbf R(\vec q)\,\vec f_T}{m}, \qquad
+\dot{\vec q} = \frac{\vec q}{2}\odot[0\ \ \vec\omega]^\top
+\]</p>
+<p>這是典型的剛體四元數運動學表示，與您在 CURIO SE(3) 幾何控制器研究中使用的四元數 Mahony AHRS 架構是同一套數學語言 —— 世界模型的 Dynamics Predictor 事實上就是在「用神經網路學習一個近似版的 \(\dot{\vec x}=\vec f(\vec x,\vec u)\)」。</p>
+
+<h3>7.4　關鍵發現：突現的「感知導向」行為（Perception-Aware Emergent Behavior）</h3>
+<p>
+訓練完成後，agent 會<b>自發地</b>把相機視角朝向下一個閘門，即使獎勵函數中<b>完全沒有</b>鼓勵「看向閘門」的項。
+論文透過一個巧妙的消融實驗驗證了這個現象：在賽道外圍加入兩個「假閘門」（只出現在渲染畫面、不需真正穿越），
+結果訓練出的策略會把注意力平均分配到真假閘門之間 —— 證明 agent 學到的是「主動朝向資訊豐富區域」的通用策略，
+而不是死記閘門位置。這是因為：
+</p>
+<ol>
+<li>End-to-end 從像素到指令的訓練，讓「感知」與「動作」的迴路被打通（closed action-perception loop）；</li>
+<li>影像被降採樣到 \(64\times64\) 後，閘門邊緣仍然清晰，但背景細節模糊，world model 的重建損失自然驅使策略聚焦於資訊量高的區域。</li>
+</ol>
+
+<h3>7.5　實驗設置摘要</h3>
+<table>
+<tr><th>項目</th><th>設定</th></tr>
+<tr><td>模擬環境</td><td>Flightmare + Agilicious（動力學與賽道）+ Habitat（即時渲染）</td></tr>
+<tr><td>影像解析度</td><td>\(64\times64\) RGB，輸入 DreamerV3</td></tr>
+<tr><td>DreamerV3 網路規模</td><td>Large (L)：4 層 MLP、768 units，2048 個遞迴單元</td></tr>
+<tr><td>真實部署方式</td><td>Hardware-in-the-Loop（HIL）：影像仍由 Habitat 模擬器提供，指令送到真實硬體</td></tr>
+<tr><td>最高速度</td><td>約 8 m/s（模擬 + HIL）</td></tr>
+</table>
+
+<div class="qa">
+<b>思考點：HIL 的侷限</b>　Dream to Fly 的「真實世界部署」實際上仍是 HIL —— 影像來自模擬器，只有動力學迴路是真實硬體。
+真正的視覺 sim-to-real gap（真實相機雜訊、光影、鏡頭失真）並未被驗證。這正是 SkyDreamer（論文三）要解決的問題。
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+<h2 class="sec-title"><span class="num">8.</span> SkyDreamer：Informed Dreamer 與端到端實機部署</h2>
+
+<h3>8.1　Informed POMDP：訓練時「開特權外掛」，部署時不依賴它</h3>
+<p>
+SkyDreamer 建立在 <b>Informed Dreamer</b>（Lambrechts et al.）之上，將問題形式化為
+<b>Informed POMDP</b>：
+</p>
+<p class="eqn">\[
+\widetilde{\mathcal P} = (\mathcal S,\mathcal U,\mathcal I,\mathcal O,T,R,\widetilde{I}_e,\widetilde{O}_e,P,\gamma)
+\]</p>
+<p>
+其中資訊變數 \(i_t = [o_t,\ o_t^{+}]^\top\) 是「觀測」與「僅訓練時可見的特權觀測」的串接。
+World model 在訓練階段被要求解碼出特權資訊 \(o_t^{+}\)（真實位置、速度、姿態、相機外參、動力學參數等），
+</p>
+<p class="eqn">\[
+\text{Decoder: } i_t \sim p^i_\theta(\cdot \mid h_t, z_t)
+\]</p>
+<p>
+但部署時策略只能存取觀測歷史 \(h_t=(o_0,u_0,\dots,o_t)\)，不再有特權資訊。
+最優策略定義為：
+</p>
+<p class="eqn">\[
+\pi_\theta^{*} = \arg\max_{\pi_\theta}\ \mathbb{E}_{\substack{s_0\sim P(\cdot)\\ u_t\sim\pi_\theta(\cdot\mid h_t)\\ s_{t+1}\sim T(\cdot\mid s_t,a_t)\\ o_t\sim \widetilde{O}_e(\cdot\mid s_t)}}
+\left[\sum_{t=0}^{\infty}\gamma^t R(s_t,a_t)\right]
+\]</p>
+
+<div class="box key">
+<h4>與標準 DreamerV3 的關鍵差異</h4>
+<p>
+標準 DreamerV3（見第 5 節）的 decoder 只重建觀測本身 \(\hat x_t \sim p_\phi(\hat x_t\mid h_t,z_t)\)。
+而 SkyDreamer 改為重建<b>真實狀態</b>（位置、速度、姿態、相機外參、動力學參數等），
+這帶來兩個好處：
+</p>
+<ul>
+<li><b>可解釋性（interpretability）</b>：可以直接檢視 world model 「認為」現在的位置、速度是多少，
+而不像重建影像那樣只能得到模糊的像素預測，方便除錯（不需要每次都重新試飛）。</li>
+<li><b>加速學習</b>：world model 被強迫抽取「任務相關」的特徵（位置、姿態等可從影像序列復原的量），
+而非浪費容量去重建視覺細節，這對高維像素輸入的收斂速度與最終表現有顯著幫助。</li>
+</ul>
+</div>
+
+<h3>8.2　狀態空間與觀測空間</h3>
+<p>完整狀態向量（部分僅訓練時可見）：</p>
+<p class="eqn">\[
+\mathbf s = [\mathbf p_w, \mathbf p_g, \mathbf v_w, \mathbf v_g, \boldsymbol\lambda, \boldsymbol\Omega, \boldsymbol\omega, \mathbf c_e, \mathbf d, \boldsymbol\varepsilon, \mathbf f]^\top
+\]</p>
+<table>
+<tr><th>符號</th><th>物理意義</th><th>是否為特權資訊</th></tr>
+<tr><td>\(\mathbf p_w,\mathbf v_w,\boldsymbol\lambda\)</td><td>世界座標位置 / 速度 / 姿態</td><td>是</td></tr>
+<tr><td>\(\boldsymbol\Omega,\boldsymbol\omega\)</td><td>機體角速度 / 螺旋槳轉速（真值）</td><td>是（觀測用的是量測值 \(\hat{\boldsymbol\Omega},\hat{\boldsymbol\omega}\)）</td></tr>
+<tr><td>\(\mathbf c_e\)</td><td>相機外參（機體到相機的尤拉角）</td><td>是</td></tr>
+<tr><td>\(\mathbf d\)</td><td>動力學隨機化參數（推力係數、馬達最大轉速等）</td><td>是</td></tr>
+<tr><td>\(\mathbf f\)</td><td>Flight plan 向量（下三個閘門的相對位置/偏航）</td><td>否（觀測輸入）</td></tr>
+<tr><td>\(\mathbf X\)</td><td>二值化閘門分割遮罩（binary segmentation mask）</td><td>否（觀測輸入）</td></tr>
+</table>
+
+<h3>8.3　動作空間：直接輸出馬達 PWM（無內迴路控制器）</h3>
+<p>
+與 Dream to Fly 使用 CTBR 不同，SkyDreamer 的動作 \(\mathbf u_t=[u_1,u_2,u_3,u_4]^\top,\ u_i\in[0,1]\)
+是<b>四顆馬達各自的正規化 PWM 指令</b>，這個設計呼應 ESA 提出的 <b>Guidance &amp; Control Networks (G&amp;CNET)</b> 概念 ——
+神經網路直接取代整個「內迴路控制器（PID / INDI）」，理論上能取得比串接式控制架構更高的控制權限與機動性上限。
+</p>
+
+<h3>8.4　獎勵函數與碰撞終止條件</h3>
+<p class="eqn">\[
+r_t = 5\cdot r_{\text{prog}} - r_{\text{rate}} + 30\cdot r_{\text{gate}}
+\]</p>
+<p class="eqn">\[
+r_{\text{rate}} = \frac{1}{2 f_c \times 10^5}\Big(\exp\big(\min(\lVert\boldsymbol\Omega_t\rVert_1,17)\big)-1\Big)
+\]</p>
+<p class="eqn">\[
+r_{\text{prog}} = \lVert \mathbf p_{t-1,g}\rVert_2 - \lVert \mathbf p_{t,g}\rVert_2
+\qquad
+r_{\text{gate}} =
+\begin{cases}
+1-\dfrac{\max(|y_{t,g}|,|z_{t,g}|)}{d_g}, & \text{通過閘門}\\[8pt]
+0, & \text{其他}
+\end{cases}
+\]</p>
+<p>
+其中 \(f_c=90\ \mathrm{Hz}\) 為控制頻率。\(r_{\text{rate}}\) 用指數函數懲罰過大角速度，
+目的是避免陀螺儀飽和與過度動態模糊（motion blur）；\(r_{\text{gate}}\) 在閘門中心給最大值、邊緣線性遞減至 0，
+鼓勵精準穿越而非擦邊而過。與 Dream to Fly 不同，SkyDreamer<b>刻意不加碰撞懲罰項</b>，
+因為實驗發現碰撞懲罰反而阻礙學習，讓「episode 提前終止導致的折現報酬損失」自然發揮懲罰效果就足夠。
+</p>
+
+<h3>8.5　Flight Plan 邏輯：解決視覺歧義（Visual Ambiguity）</h3>
+<div class="box def">
+<h4>什麼是視覺歧義？</h4>
+<p>
+賽道設計中常出現「不同路段、視覺上卻幾乎一樣」的情況（例如 ladder / inverted-loop 賽道中，
+無人機會從不同角度、不同時間點兩次靠近同一個閘門，畫面幾乎相同，但正確的下一步機動卻不同）。
+純粹依賴「當前影像」的端到端策略在此類賽道上會失效，因為 POMDP 的觀測不足以決定正確動作。
+</p>
+</div>
+<p>
+SkyDreamer 引入 flight plan 向量 \(\mathbf f_i\)，內含「未來三個閘門」的相對位置與偏航角差：
+</p>
+<p class="eqn">\[
+\mathbf f_i = \Big[\ \mathbf p_i^g - \mathbf p_{i-1}^g,\ \psi_i^g-\psi_{i-1}^g,\ \dots,\
+\mathbf p_i^g,\ \psi_i^g,\ \dots,\ \psi_{i+2}^g\ \Big]^\top
+\]</p>
+<p>
+並用 world model 解碼出的閘門相對位置估計 \(\hat{\mathbf x}_g\) 來判斷是否已通過當前閘門
+（觸發條件 \(\hat{\mathbf x}_g > -0.15\ \mathrm{m}\)），進而更新 flight plan 索引 \(i\)。
+這個機制本質上是把「離散的任務進度」（賽道上第幾段）明確地餵給策略，
+彌補了純視覺觀測在 POMDP 意義下的不完備性，也為未來「飛任意未知賽道」的泛化能力奠定基礎。
+</p>
+
+<h3>8.6　視覺 Sim-to-Real：CycleGAN / StochGAN</h3>
+<p>
+渲染出的理想化分割遮罩與真實相機透過分割網路（GateNet, U-Net 架構）產出的遮罩之間存在明顯落差
+（真實遮罩較細、有雜訊、邊緣不規則）。SkyDreamer 用約 4000 張未配對的真實/渲染影像訓練
+<b>StochGAN</b>（CycleGAN 的隨機化延伸版本，於輸入加入噪聲通道），
+把渲染遮罩轉換得更接近真實分佈，並額外做隨機腐蝕（erosion）模擬真實遮罩偏細的現象，
+以及用仿射變換模擬 rolling shutter 相機在角速度下產生的水平剪切與垂直縮放效應：
+</p>
+<p class="eqn">\[
+A = \begin{bmatrix} 1 & -s\,r_c & \frac{W}{2}s\,r_c \\ s\,q_c & 1+s\,q_c & -\frac{H}{2}s\,q_c \end{bmatrix},
+\qquad \mathbf X' = \mathrm{warp\_affine}(\mathbf X, A)
+\]</p>
+<p>其中 \(r_c, q_c\) 分別為相機座標系下的偏航角速度與俯仰角速度，\(s\in[0,0.02]\) 為隨機化的 rolling shutter 係數。</p>
+
+<h3>8.7　平滑正則化：避免 Bang-Bang 控制燒毀馬達</h3>
+<p>
+純粹用標準 DreamerV3 訓練直接輸出 PWM 的策略，容易收斂到「馬達不是全開就是全關」的 bang-bang 行為 ——
+在模擬中最優，實機上卻會導致馬達過熱甚至燒毀。SkyDreamer 只對策略分佈的<b>均值</b>加平滑正則化
+（避免與熵正則化互相打架）：
+</p>
+<p class="eqn">\[
+\mathcal{L}_{\text{smooth}} = \lambda_{\text{smooth}}\, \mathbb{E}_t\big[\lVert \mu_t - \mu_{t-1}\rVert_2^2\big],
+\qquad \lambda_{\text{smooth}}=0.002
+\]</p>
+
+<h3>8.8　實機結果總覽</h3>
+<table>
+<tr><th>賽道</th><th>成功率</th><th>最高速度</th><th>最大加速度</th><th>備註</th></tr>
+<tr><td>Inverted loop（橙色閘門）</td><td>100%（25 圈）</td><td>13 m/s</td><td>6 g</td><td>含一次電量衰減仍完成</td></tr>
+<tr><td>Ladder loop（橙色閘門）</td><td>100%（25 圈）</td><td>13 m/s</td><td>6 g</td><td>0.3 m 極窄穿越誤差 &lt; 1 m</td></tr>
+<tr><td>Loop（MAVLab 閘門）</td><td>100%（25 圈）</td><td>13 m/s</td><td>6 g</td><td>分割品質差，驗證感知穩健性</td></tr>
+<tr><td>Big track（MAVLab 閘門）</td><td>5/6 飛行成功</td><td><b>21 m/s</b></td><td>6 g</td><td>唯一失敗為相機外參超出訓練分佈</td></tr>
+</table>
+
+<p>
+特別值得注意的是「電池耗電」實驗（Fig. 8）：SkyDreamer 從未在訓練中見過隨時間變化的動力學參數，
+但透過線上估計馬達最大轉速 \(\hat\omega_{\max}\)，仍能在飛行途中偵測到推力上限下降 30%，
+即時調整飛行路徑並完成所有倒圈機動 —— 這正是「特權資訊解碼」帶來的隱式線上系統辨識（online system identification）能力，
+與您在 CURIO 專案中做的 relay-feedback autotuning、線上參數估計在概念上是相通的，只是這裡是由 world model 隱式學到，
+而非顯式的頻域辨識演算法。
+</p>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+<h2 class="sec-title"><span class="num">9.</span> 六篇論文之技術比較</h2>
+
+<h3>9.1　Dreamer 三代演進對照</h3>
+<table>
+<tr>
+  <th>比較項目</th>
+  <th>DreamerV1</th>
+  <th>DreamerV2</th>
+  <th>DreamerV3</th>
+</tr>
+<tr><td>潛在表徵</td><td>對角高斯（連續）</td><td>32×32 類別分佈（離散）</td><td>類別分佈 + 1% unimix</td></tr>
+<tr><td>取樣梯度技巧</td><td>重參數化（reparameterization）</td><td>Straight-through 梯度</td><td>Straight-through（承襲 V2）</td></tr>
+<tr><td>KL 處理</td><td>單一 \(\beta\) 加權 KL（VIB 形式）</td><td>KL Balancing（\(\alpha=0.8\) 不對稱加權）</td><td>KL Balancing + Free Bits 合併</td></tr>
+<tr><td>Actor 梯度</td><td>純解析梯度反傳（動態 backprop）</td><td>Reinforce（Atari）／動態 backprop（連續控制）依任務切換</td><td>統一用 Reinforce + Return Normalization，免手動切換</td></tr>
+<tr><td>世界模型與策略訓練</td><td>交錯訓練</td><td><b>分離訓練</b>（首次證明純世界模型內想像足以學到人類水準策略）</td><td>分離訓練</td></tr>
+<tr><td>動作空間支援</td><td>僅連續動作</td><td>離散（Atari）為主，也support連續（人形機器人）</td><td>連續＋離散統一支援</td></tr>
+<tr><td>驗證規模</td><td>20 個 DMC 連續控制任務</td><td>Atari 55 款遊戲</td><td>8 大領域 150+ 任務</td></tr>
+<tr><td>是否需調參</td><td>同組超參數但僅限連續控制</td><td>連續/離散分別調整 \(\rho,\eta\)</td><td>宣稱固定超參數跨所有領域</td></tr>
+</table>
+
+<h3>9.2　全系列（含無人機應用）技術比較</h3>
+<table>
+<tr>
+  <th>比較項目</th>
+  <th>DreamerV3</th>
+  <th>Dream to Fly</th>
+  <th>SkyDreamer</th>
+</tr>
+<tr><td>核心貢獻</td><td>通用 World Model + RL 演算法，固定超參數橫跨 150+ 任務</td><td>把 DreamerV3 原封不動應用於視覺化無人機競速，證明優於 PPO</td><td>Informed Dreamer + flight plan，首次完全機載端到端競速</td></tr>
+<tr><td>World model 解碼目標</td><td>觀測本身（影像/向量重建）</td><td>觀測本身（沿用 DreamerV3 設計）</td><td><b>特權狀態</b>（位置、速度、姿態、相機外參、動力學參數）</td></tr>
+<tr><td>動作空間</td><td>依任務而定（連續/離散）</td><td>CTBR（集體推力 + 機體角速度）</td><td><b>馬達 PWM</b>（無內迴路控制器，G&amp;CNET 概念）</td></tr>
+<tr><td>視覺輸入</td><td>原始 RGB / 向量觀測</td><td>原始 RGB 像素</td><td>二值化分割遮罩（segmentation mask）</td></tr>
+<tr><td>視覺 Sim-to-Real</td><td>不適用</td><td>未處理（仍為 HIL，影像來自模擬器）</td><td>CycleGAN/StochGAN + rolling shutter 模擬 + 腐蝕增強</td></tr>
+<tr><td>部署方式</td><td>模擬環境內比較</td><td>模擬 + HIL（真實硬體，但影像仍由模擬器提供）</td><td><b>完全機載、無外部輔助</b>，Jetson Orin NX 上跑推論</td></tr>
+<tr><td>視覺歧義處理</td><td>不適用</td><td>未特別處理</td><td>Flight plan 向量 + world model 解碼進度追蹤</td></tr>
+<tr><td>可解釋性</td><td>中等（可視覺化重建影像）</td><td>中等（重建影像品質隨訓練提升）</td><td><b>高</b>（可直接讀出估計的位置/速度/參數）</td></tr>
+<tr><td>驗證任務規模</td><td>Atari、DMLab、ProcGen、Minecraft 等 8 領域</td><td>3 條模擬賽道（Circle/Kidney/Figure-8）</td><td>4 條真實賽道，含 21 m/s 高速大賽道</td></tr>
+</table>
+
+<h3>9.3　六篇論文的 V／M／C 訓練方法綜合比較</h3>
+<p>
+把起源論文 World Models（2018）與五篇 Dreamer 系列論文放回<b>同一個 V-M-C 框架</b>下檢視，
+可以看出一條清楚的演進脈絡：<b>視覺模型與記憶模型從「各自獨立訓練」逐漸合併成單一的 RSSM 聯合訓練；
+控制器則從「無梯度演化」逐漸走向「有梯度的強化學習」，且輸入輸出的內容也隨著任務從遊戲走向真實無人機而不斷擴充</b>。
+以下依 V、M、C 三個元件分別列出各論文的訓練方式、輸入資料與輸出資料（訓練目標）。
+</p>
+
+<h4>(1) 視覺模型（V / Encoder）訓練方法比較</h4>
+<table>
+<tr>
+  <th>論文</th>
+  <th>訓練方式</th>
+  <th>輸入資料</th>
+  <th>輸出資料／訓練目標</th>
+</tr>
+<tr>
+  <td><b>World Models</b>（2018）</td>
+  <td>獨立、無監督訓練的 <b>ConvVAE</b>，訓練完成後<b>凍結</b>，不再更新；資料來自「隨機策略」跑 10,000 次 rollout 一次性收集</td>
+  <td>單張 \(64\times64\times3\) 像素影格（CarRacing / VizDoom 螢幕截圖），與任務、獎勵完全無關</td>
+  <td>重建影格 \(\hat o_t\) + 潛在分佈 \((\mu,\sigma)\)；損失＝重建 \(L^2\) 誤差 ＋ KL 至標準常態先驗 \(N(0,I)\)</td>
+</tr>
+<tr>
+  <td><b>DreamerV1</b></td>
+  <td>與記憶模型<b>合併為單一 RSSM</b>，用 ELBO <b>聯合</b>訓練；資料來自持續成長的線上 replay buffer（agent 邊互動邊收集）</td>
+  <td>像素觀測 \(o_t\)（DMC 渲染影像）＋ 前一步模型狀態 \(s_{t-1}\)、動作 \(a_{t-1}\)</td>
+  <td>後驗分佈 \(p(s_t\mid s_{t-1},a_{t-1},o_t)\) ＋ 解碼重建影像；訓練目標為變分下界（重建項 ＋ 與 transition prior 的 KL 項）</td>
+</tr>
+<tr>
+  <td><b>DreamerV2</b></td>
+  <td>同樣併入 RSSM 聯合訓練，但潛在表徵改為<b>離散類別分佈</b>；資料來自線上 replay buffer（含 \(\epsilon\)-greedy 探索）</td>
+  <td>Atari 像素觀測 \(o_t\) ＋ \(s_{t-1},a_{t-1}\)</td>
+  <td>32×32 類別分佈的離散潛在 \(z_t\) ＋ 影像重建；straight-through 梯度 ＋ KL balancing（\(\alpha=0.8\)）</td>
+</tr>
+<tr>
+  <td><b>DreamerV3</b></td>
+  <td>RSSM 聯合訓練，新增 <b>symlog 前處理</b>使同一組超參數可橫跨像素／向量觀測；資料來自線上 replay buffer</td>
+  <td>像素影像<b>或</b>低維本體感覺向量（依任務而定）＋ \(s_{t-1},a_{t-1}\)</td>
+  <td>類別分佈潛在 \(z_t\)（1% unimix）＋ symexp 反變換後的重建；prediction／dynamics／representation 三項損失合併，KL balance + free bits</td>
+</tr>
+<tr>
+  <td><b>Dream to Fly</b></td>
+  <td>直接沿用 DreamerV3 的 RSSM 聯合訓練方式，未修改；資料來自模擬器中線上收集的 replay buffer</td>
+  <td>模擬無人機機載相機 RGB 影像 ＋ \(s_{t-1}\)、CTBR 動作 \(a_{t-1}\)</td>
+  <td>與 V3 相同：潛在 \(z_t\) ＋ 影像重建，用於證明 pixel-to-command 任務中世界模型優於無模型 PPO</td>
+</tr>
+<tr>
+  <td><b>SkyDreamer</b></td>
+  <td>RSSM 聯合訓練，但輸入先經過 <b>CycleGAN/StochGAN</b> 影像轉換以縮小 sim-to-real gap，並加入 rolling shutter 模擬與腐蝕增強</td>
+  <td><b>二值化分割遮罩</b>（segmentation mask，而非原始 RGB）＋ \(s_{t-1}\)、馬達 PWM 動作 \(a_{t-1}\)</td>
+  <td>潛在 \(z_t\) ＋ 分割遮罩重建；額外訓練 encoder 對「模擬遮罩」與「真實遮罩經 GAN 轉換」保持表徵一致，以支援機載部署</td>
+</tr>
+</table>
+
+<h4>(2) 記憶模型（M / 動態模型）訓練方法比較</h4>
+<table>
+<tr>
+  <th>論文</th>
+  <th>訓練方式</th>
+  <th>輸入資料</th>
+  <th>輸出資料／訓練目標</th>
+</tr>
+<tr>
+  <td><b>World Models</b>（2018）</td>
+  <td>獨立訓練的 <b>MDN-RNN</b>，在 V 凍結之後才訓練；用<b>教師強制</b>（teacher forcing）對隨機策略收集的 \(z\) 序列做最大概似訓練</td>
+  <td>V 編碼出的 \(z_t\)（訓練時對每幀預存的 \((\mu,\sigma)\) 重新取樣以防過擬合）、動作 \(a_t\)、前一步隱藏狀態 \(h_t\)</td>
+  <td>下一步潛在向量的<b>混合高斯分佈</b> \(P(z_{t+1}\mid a_t,z_t,h_t)\)（VizDoom 版本額外輸出二元 \(P(d_{t+1})\)）；損失為負對數概似（NLL）</td>
+</tr>
+<tr>
+  <td><b>DreamerV1</b></td>
+  <td>Transition model（先驗）為 RSSM 的一部分，與 V（representation model）<b>共用同一組 ELBO 聯合訓練</b>，並非分開的兩階段</td>
+  <td>前一步模型狀態 \(h_{t-1},z_{t-1}\)、動作 \(a_{t-1}\)（<b>不觀測</b>當前影格 \(o_t\)）</td>
+  <td>下一步遞迴狀態 \(h_t\) ＋ 隨機潛在<b>先驗</b>分佈 \(q(s_t\mid s_{t-1},a_{t-1})\) ＋ 獎勵預測 \(q(r_t\mid s_t)\)；訓練目標為使先驗盡量逼近後驗（KL 項）</td>
+</tr>
+<tr>
+  <td><b>DreamerV2</b></td>
+  <td>同為 RSSM 內部聯合訓練，動態先驗改為離散類別；並新增<b>折現預測</b>（discount/continue predictor）</td>
+  <td>\(h_{t-1},z_{t-1},a_{t-1}\)</td>
+  <td>離散類別先驗 \(z_t\) ＋ 獎勵 \(r_t\) ＋ episode 是否終止的機率 \(\gamma_t\)；KL balancing 讓先驗與後驗以不對稱權重互相靠近</td>
+</tr>
+<tr>
+  <td><b>DreamerV3</b></td>
+  <td>沿用 V3 的 RSSM 聯合訓練，但用 symlog/symexp 使獎勵與觀測尺度穩健，跨任務不需調整損失權重</td>
+  <td>\(h_{t-1},z_{t-1},a_{t-1}\)</td>
+  <td>先驗 \(z_t\) ＋ 獎勵（symlog 尺度）＋ continue flag；三項損失 \(\mathcal L_{\text{pred}}+\mathcal L_{\text{dyn}}+\mathcal L_{\text{rep}}\) 合併，free bits 防止 KL 項塌陷為 0</td>
+</tr>
+<tr>
+  <td><b>Dream to Fly</b></td>
+  <td>沿用 DreamerV3 動態模型設計，未新增額外解碼頭；重點在驗證此動態模型是否足以支撐無人機競速任務的想像式訓練</td>
+  <td>\(h_{t-1},z_{t-1}\)、CTBR 動作 \(a_{t-1}\)</td>
+  <td>先驗 \(z_t\) ＋ 獎勵（賽道進度相關）＋ continue flag；用於在想像中 rollout 出完整的競速軌跡</td>
+</tr>
+<tr>
+  <td><b>SkyDreamer</b>（Informed Dreamer）</td>
+  <td>在標準 RSSM 動態模型上<b>額外加裝解碼頭</b>，訓練時利用模擬器提供的特權資訊做監督，這是本文區別於前四篇 Dreamer 系列動態模型最大的差異</td>
+  <td>\(h_{t-1},z_{t-1}\)、馬達 PWM 動作 \(a_{t-1}\)，訓練時另外取得模擬器<b>特權觀測</b> \(o_t^{+}\)（真實位置、速度、姿態、相機外參、動力學參數）作為監督標籤</td>
+  <td>先驗 \(z_t\) ＋ 獎勵 ＋ continue flag ＋ <b>解碼後的特權狀態估計</b>（位置/速度/動力學參數等，僅訓練時有標籤，部署時完全由潛在狀態推論得出）；此舉大幅提升可解釋性</td>
+</tr>
+</table>
+
+<h4>(3) 控制器模型（C / Actor-Critic）訓練方法比較</h4>
+<table>
+<tr>
+  <th>論文</th>
+  <th>訓練方式</th>
+  <th>輸入資料</th>
+  <th>輸出資料／訓練目標</th>
+</tr>
+<tr>
+  <td><b>World Models</b>（2018）</td>
+  <td><b>CMA-ES 演化策略</b>（無梯度黑箱優化）；族群 64、每個體 16 次 rollout 平均報酬為適應度；C 與 V、M 完全分開、最後才訓練</td>
+  <td>V 輸出的 \(z_t\) ＋ M 的隱藏狀態 \(h_t\)（Doom 任務為 \(c_t,h_t\)）</td>
+  <td>單層線性映射直接輸出動作 \(a_t=W_c[z_t\,h_t]+b_c\)；訓練訊號僅為<b>累積報酬純量</b>（CarRacing 用真實環境 rollout，VizDoom 用 M 產生的虛擬「夢境」環境 rollout）</td>
+</tr>
+<tr>
+  <td><b>DreamerV1</b></td>
+  <td><b>解析梯度反傳</b>：把 λ-return 對 actor 參數的梯度，透過可微分的動態模型直接反傳穿越多個想像步；在<b>想像軌跡</b>中訓練，起點取樣自真實經驗</td>
+  <td>想像出的模型狀態 \(s_\tau=\{h_\tau,z_\tau\}\)</td>
+  <td>tanh 變換高斯分佈參數，重參數化取樣出連續動作 \(a_\tau\)；訓練目標為最大化 \(V_\lambda(s_\tau)\) 之期望值，梯度為解析梯度而非 policy-gradient 估計器</td>
+</tr>
+<tr>
+  <td><b>DreamerV2</b></td>
+  <td>與世界模型<b>分離訓練</b>；Atari（離散動作）用 <b>Reinforce</b> 估計器，連續控制用動態反傳，依任務類型手動切換；同樣在想像軌跡中訓練</td>
+  <td>想像狀態 \(s_\tau\)</td>
+  <td>離散動作的類別分佈 或 連續動作的高斯分佈；REINFORCE 梯度（含 baseline／advantage）＋ 熵正則化，或動態反傳梯度</td>
+</tr>
+<tr>
+  <td><b>DreamerV3</b></td>
+  <td>統一改用 <b>REINFORCE ＋ Return Normalization</b>（用報酬分佈的百分位數縮放），連續與離散動作用同一套流程，不再手動切換；想像軌跡中訓練</td>
+  <td>想像狀態 \(s_\tau\)</td>
+  <td>動作分佈（依任務為離散/連續）；advantage \((R_\tau^\lambda - v_\tau)\) 加權的 policy-gradient loss ＋ 熵正則化 \(\eta=3\times10^{-4}\)</td>
+</tr>
+<tr>
+  <td><b>Dream to Fly</b></td>
+  <td>沿用 DreamerV3 的 REINFORCE + Return Normalization 訓練流程，全程在想像軌跡中訓練，未接觸真實／模擬環境的每一步互動梯度</td>
+  <td>想像狀態 \(s_\tau\)</td>
+  <td><b>CTBR</b>（集體推力 ＋ 機體三軸角速度指令），再交由下游低階角速度控制器轉為馬達指令；訓練目標與 V3 相同</td>
+</tr>
+<tr>
+  <td><b>SkyDreamer</b></td>
+  <td>同樣為 REINFORCE + Return Normalization（承襲 V3／Dream to Fly），但額外把 <b>flight plan 向量</b> \(\mathbf f_i\) 併入輸入以消解視覺歧義；在想像軌跡中訓練後，直接部署整個 actor 於機載晶片</td>
+  <td>想像狀態 \(s_\tau\) ＋ flight plan 向量 \(\mathbf f_i\)（未來三個閘門的相對位置／偏航角）</td>
+  <td>直接輸出四軸<b>馬達 PWM</b>（無任何內迴路控制器，端到端 G&amp;CNET 風格）；訓練目標與 V3 相同，但獎勵函數額外納入賽道進度與碰撞懲罰</td>
+</tr>
+</table>
+
+<div class="box key">
+<h4>三條清楚的演進主軸</h4>
+<ul>
+<li><b>V 與 M 從「兩階段獨立訓練」走向「單一 RSSM 聯合訓練」</b>：World Models 中 V 先訓練、凍結，M 才用 V 輸出的 \(z\) 訓練，
+兩者訓練目標互不相干（V 不知道任務、M 不影響 V 的表徵）；DreamerV1 開始把這兩者合併成同一個 RSSM，
+用單一 ELBO 聯合最佳化，讓 V 學到的表徵天生就對「M 是否能準確預測未來」與「reward 預測」負責，
+這正是 9.3(1) 表格「輸出資料」欄位從單純「重建影像」演變為「潛在分佈 + 獎勵/終止預測」的關鍵原因。</li>
+<li><b>C 從「無梯度演化」走向「有梯度的想像式策略梯度」</b>：World Models 用 CMA-ES 只需要標量報酬即可訓練，
+完全不需要世界模型可微分；DreamerV1 反過來<b>要求</b>世界模型必須可微分，才能把梯度解析地反傳穿越想像軌跡；
+DreamerV2/V3 則改用 REINFORCE，放棄解析梯度以換取離散動作與更廣泛任務的支援。
+三者代表了「樣本效率 vs. 適用範圍 vs. 實作複雜度」的不同取捨點。</li>
+<li><b>M 的輸出內容隨應用場景不斷擴充</b>：從最初只預測下一個潛在向量 \(z_{t+1}\)（World Models 的 CarRacing），
+到加入終止訊號 \(d_{t+1}\)（World Models 的 VizDoom，使其可完整替代 Gym 環境），
+到加入獎勵與 continue flag（Dreamer 系列，使其可支援任意 RL 任務），
+再到加入特權狀態解碼（SkyDreamer，使其在犧牲一些訓練複雜度的前提下換取部署時的可解釋性）——
+<b>M 預測的目標，本質上反映了「這個世界模型被要求承擔多少下游任務的責任」</b>。</li>
+</ul>
+</div>
+
+<div class="box compare">
+<h4>批判性思考：五篇論文各自的侷限</h4>
+<ul>
+<li><b>DreamerV1</b>：僅支援連續動作，離散動作與提早終止（early termination）任務尚未妥善處理；解析梯度反傳依賴動態模型本身足夠準確，模型誤差會直接累積進策略梯度中，缺乏 V2 之後對此問題的系統性處理。</li>
+<li><b>DreamerV2</b>：需要「依任務類型手動切換」\(\rho\)（Atari 用純 Reinforce、連續控制用純動態反傳），並未真正做到跨任務單一組態；世界模型與策略分離訓練雖證明可行，但仍需完整 55 款遊戲 × 10 天調參驗證才能確立超參數，泛用性尚待 V3 補強。</li>
+<li><b>DreamerV3</b>：雖然聲稱「固定超參數」，但 Minecraft 任務仍需要放大模型規模（200M 參數）與加速破壞方塊速度等任務特化設計，並非完全零調整；另外單次訓練仍需 9 天 × 1 GPU，對即時性應用（如飛控）而言仍偏慢。</li>
+<li><b>Dream to Fly</b>：最高速度僅 8 m/s，且從未驗證真實相機影像的 sim-to-real gap（HIL 只驗證動力學迴路），距離「真正端到端實機部署」尚有一步之遙；这也是 SkyDreamer 存在的動機。</li>
+<li><b>SkyDreamer</b>：解碼的狀態估計存在高頻跳動（可能來自離散潛在表徵 \(z_t\) 的量化特性）；動力學參數估計品質因訓練種子而異，部分參數（如偏航效率 \(k_{r1}\)）估計失敗；且訓練仍需約 50 小時 GPU 運算。</li>
+</ul>
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s10">
+<h2 class="sec-title"><span class="num">10.</span> 數學附錄：關鍵推導與符號整理</h2>
+
+<h3>10.1　為什麼 λ-return 是偏差與方差的折衷？</h3>
+<p>
+純粹的 Monte-Carlo return（\(\lambda=1\)）方差大但無偏；純粹的一步 TD target（\(\lambda=0\)）方差小但有偏（依賴 critic 本身估計的準確度）。
+λ-return 透過遞迴混合：
+</p>
+<p class="eqn">\[
+R_t^{\lambda} = r_t + \gamma c_t\Big[(1-\lambda)\,v(s_{t+1}) + \lambda\, R_{t+1}^{\lambda}\Big]
+\]</p>
+<p>
+可以展開成「所有 n-step return 的指數加權平均」，在 \(0<\lambda<1\) 時取得偏差-方差的平滑折衷。
+DreamerV3 與 SkyDreamer 皆使用 \(\lambda=0.95\)（Extended Data Table 5）。
+</p>
+
+<h3>10.2　REINFORCE 估計器的推導骨架</h3>
+<p>策略梯度的目標是最大化期望報酬 \(J(\theta)=\mathbb{E}_{\pi_\theta}[R]\)。利用 log-derivative trick：</p>
+<p class="eqn">\[
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\big[R\cdot \nabla_\theta \log \pi_\theta(a\mid s)\big]
+\]</p>
+<p>
+實作上用 advantage \((R_t^\lambda - v_t)\) 取代原始報酬 \(R\) 以降低方差（baseline trick，不改變期望值但顯著降低估計方差），
+再加上熵正則化項 \(\eta\,\mathrm H[\pi_\theta]\) 鼓勵探索，即得到第 3.3 節的 actor loss。
+</p>
+
+<h3>10.3　KL 散度與變分下界（ELBO）的關係</h3>
+<p>
+DreamerV3 的世界模型訓練本質上是在最大化一個變分下界（類似 VAE 的 ELBO），
+其中 reconstruction term 對應 \(\mathcal L_{\text{pred}}\)，KL 正則項對應
+\(\mathcal L_{\text{dyn}}+\mathcal L_{\text{rep}}\)。標準 VAE 的 KL 項為：
+</p>
+<p class="eqn">\[
+\mathrm{KL}\big[q_\phi(z\mid x)\,\|\,p(z)\big]
+\]</p>
+<p>
+而 DreamerV3 把「先驗」\(p(z)\) 換成了「由 \(h_t\) 預測出的動態先驗」\(p_\phi(z_t\mid h_t)\)，
+這使得先驗本身也是可學習、且與時間序列相關的 —— 這正是 RSSM 與標準 VAE 最本質的差異：
+標準 VAE 的先驗通常是固定的標準常態分佈，而 RSSM 的先驗會隨遞迴狀態演化，具備「預測未來」的能力。
+</p>
+
+<h3>10.4　符號對照表</h3>
+<table>
+<tr><th>符號</th><th>意義</th><th>出現章節</th></tr>
+<tr><td>\(h_t\)</td><td>遞迴確定性狀態（GRU 隱藏狀態）</td><td>3.1</td></tr>
+<tr><td>\(z_t\)</td><td>隨機潛在表徵（離散類別分佈取樣）</td><td>3.1</td></tr>
+<tr><td>\(s_t=\{h_t,z_t\}\)</td><td>完整模型狀態</td><td>3.3</td></tr>
+<tr><td>\(\mathrm{sg}(\cdot)\)</td><td>停止梯度算子（stop-gradient）</td><td>3.2</td></tr>
+<tr><td>\(\beta_{\text{pred}},\beta_{\text{dyn}},\beta_{\text{rep}}\)</td><td>世界模型三項損失的加權係數</td><td>3.2</td></tr>
+<tr><td>\(\gamma\)</td><td>折現因子（0.997）</td><td>3.3</td></tr>
+<tr><td>\(\lambda\)</td><td>λ-return 的混合係數（0.95）</td><td>3.3, 8.1</td></tr>
+<tr><td>\(\eta\)</td><td>熵正則化係數（\(3\times10^{-4}\)）</td><td>3.3</td></tr>
+<tr><td>\(o_t^{+}\)</td><td>僅訓練時可用的特權觀測</td><td>6.1</td></tr>
+<tr><td>\(\mathbf f_i\)</td><td>Flight plan 向量（未來三閘門相對位置/偏航）</td><td>6.5</td></tr>
+</table>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s11">
+<h2 class="sec-title"><span class="num">11.</span> 對 UAV 控制研究的啟示與延伸思考</h2>
+
+<h3>11.1　與傳統飛控架構的對照</h3>
+<p>
+您在 CURIO / Betaflight / Crazyflie 相關研究中所熟悉的串接式飛控架構（外環姿態 → 內環角速度 → 混控矩陣 → PWM），
+本質上是「人類手工設計的狀態估計 + 控制律」。而本教材五篇論文展示的是另一條路線：
+</p>
+<div class="grid2">
+<div class="box def">
+<h4>傳統模組化飛控</h4>
+<ul>
+<li>顯式狀態估計（EKF / Mahony AHRS）</li>
+<li>顯式控制律（PID / INDI / SE(3) 幾何控制）</li>
+<li>可解釋性高、可形式化穩定性證明（如 Routh-Hurwitz）</li>
+<li>需要精確建模與大量手動調參</li>
+</ul>
+</div>
+<div class="box key">
+<h4>World Model + RL 端到端</h4>
+<ul>
+<li>隱式狀態估計（world model 潛在表徵，SkyDreamer 進一步解碼為可讀狀態）</li>
+<li>學習得到的控制策略（actor 網路直接輸出 PWM）</li>
+<li>可解釋性較低，但 SkyDreamer 透過「解碼特權狀態」大幅緩解此問題</li>
+<li>需要大量模擬訓練與 sim-to-real 技巧，但一旦訓練完成，可自動適應動力學參數變化（如電池衰減）</li>
+</ul>
+</div>
+</div>
+
+<h3>11.2　可能的研究連結點</h3>
+<ul>
+<li><b>線上參數辨識</b>：SkyDreamer 的隱式線上估計 \(\hat\omega_{\max}\)、\(\hat k_w\) 現象，
+與您在 CURIO 中做的 relay-feedback autotuning（Åström–Hägglund 方法）、頻域辨識可以互相對照 ——
+一個是「顯式頻域方法」，一個是「隱式神經網路推論」，未來或可探討兩者結合（例如用 world model 的線上估計初始化顯式辨識，
+或反過來用顯式模型作為 world model 的先驗）。</li>
+<li><b>SE(3) 幾何控制 vs. 學習型控制</b>：CURIO4 的 SO(3) vee-map 誤差公式化提供了「精確、可證明穩定」的姿態控制，
+而 DreamerV3/SkyDreamer 的 actor-critic 則是「資料驅動、可自動適應未建模動態」的替代方案。
+兩者互補的可能方向：用 SE(3) 控制器作為 imitation learning 的初始策略，加速 world model 訓練收斂。</li>
+<li><b>四層 I2C 匯流排保護、EKF 導航系統</b>等硬體/估計工作，某種程度上正是為了取得 SkyDreamer 中 \(o_t^+\)
+（特權觀測）在實機上「無法取得」時所需的替代方案 —— 換言之，World Model 方法某種程度上是用大量模擬訓練
+換取對精確狀態估計硬體（如高精度 IMU 融合）的依賴降低。</li>
+<li><b>教學用途</b>：若要在「零到飛」課程中示範 World Model 概念，可以考慮用簡化版 RSSM（例如僅用低維向量觀測，
+而非影像）在您既有的 pivot stand PID 平衡台或 MATLAB 雙迴路模擬 app 基礎上，加開一個「MBRL 對照組」，
+讓學生直觀比較 PID/SE(3) 控制與學習型控制在同一個平台上的差異。</li>
+</ul>
+
+<h3>11.3　實務落地的現實限制</h3>
+<div class="box compare">
+<h4>在把 World Model + RL 導入實際 UAV 研究前，應注意：</h4>
+<ul>
+<li><b>訓練成本</b>：DreamerV3 單一 A100 GPU 訓練 Minecraft 任務需 9 天；SkyDreamer 完整訓練約 50 小時。
+對於資源有限的實驗室（單張消費級 GPU），需要縮小模型規模或降低 replay ratio，會犧牲部分效能。</li>
+<li><b>模擬器精度需求</b>：SkyDreamer 之所以能做到高機動性 sim-to-real 轉移，仰賴精細校準的四旋翼動力學模型
+（含馬達回應時間常數 \(\tau\)、螺旋槳氣動力矩耦合項等），這類建模工作量不亞於傳統控制器設計。</li>
+<li><b>安全性驗證</b>：學習型策略缺乏形式化穩定性保證，不適合直接用於對安全性要求極高的應用（如載人飛行器），
+仍需搭配傳統控制的安全網（例如幾何圍籬、失效保護邏輯）。</li>
+</ul>
+</div>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="s12">
+<h2 class="sec-title"><span class="num">12.</span> 課後習題</h2>
+
+<ol class="step-list">
+<li>
+<b>推導題</b>：試證明 λ-return 遞迴式
+\(R_t^{\lambda} = r_t + \gamma c_t[(1-\lambda)v_{t+1}+\lambda R_{t+1}^{\lambda}]\)
+展開後等價於所有 n-step return 的指數加權平均
+\(R_t^{\lambda} = (1-\lambda)\sum_{n=1}^{\infty}\lambda^{n-1}R_t^{(n)}\)（假設 episode 不終止的情況下）。
+</li>
+<li>
+<b>概念題（DreamerV1）</b>：DreamerV1 用「解析梯度反傳」訓練 actor，而非 A3C/PPO 常用的 REINFORCE。
+請說明這兩種梯度估計方式在偏差（bias）與方差（variance）上的差異，並解釋為什麼解析梯度反傳需要一個
+「可微分」的世界模型才能成立。
+</li>
+<li>
+<b>概念題（DreamerV2）</b>：DreamerV2 的 straight-through 梯度估計器讓前向傳播使用離散 one-hot 取樣、
+反向傳播卻視同對 softmax 機率微分。請解釋這種做法為什麼是「有偏但低方差」，並比較它與 DreamerV1
+重參數化梯度（reparameterization，無偏但要求分佈可重參數化）的適用場景差異。
+</li>
+<li>
+<b>概念題</b>：解釋為什麼 DreamerV3 的 dynamics loss 與 representation loss 需要對「不同」的分佈套用停止梯度（KL balancing）？
+這個機制與 DreamerV2 首創的 KL balancing（\(\alpha=0.8\) 不對稱加權）有何異同？
+若把兩者的權重設成相同會發生什麼問題？
+</li>
+<li>
+<b>比較題</b>：Dream to Fly 使用 CTBR 動作空間，SkyDreamer 使用直接馬達 PWM。
+請從「策略搜尋空間大小」與「機動性上限」兩個角度，分析這個設計差異對訓練難度與最終飛行表現可能帶來的影響。
+</li>
+<li>
+<b>設計題</b>：若要把 SkyDreamer 的 Flight Plan 邏輯應用到您的 CURIO 平台（假設要飛一個 8 字形賽道），
+請設計一個合理的 flight plan 向量結構，並說明如何利用 world model 解碼的相對位置來觸發閘門索引更新。
+</li>
+<li>
+<b>批判題</b>：DreamerV3 論文宣稱使用「固定超參數」橫跨所有任務，但 SkyDreamer 訓練中卻分三階段調整了
+batch length、entropy coefficient 與 learning rate。這是否違背了 DreamerV3 論文的核心主張？
+請論證你的立場並舉出論文中的具體證據。
+</li>
+<li>
+<b>實作題（進階）</b>：嘗試用簡化的 RSSM（例如僅 32 維離散潛在表徵、單層 GRU）在您的雙迴路 PID 模擬平台上，
+以低維向量觀測（而非影像）訓練一個 world model，比較其想像出的軌跡與真實模擬軌跡的誤差隨想像步數增加的發散情形。
+</li>
+</ol>
+
+</section>
+
+<footer>
+本講義為碩士班課程輔助教材，內容整理自：<br>
+[0] Ha, D. and Schmidhuber, J., <i>World Models</i>, arXiv:1803.10122, 2018（互動版：worldmodels.github.io）.<br>
+[1] Hafner, Lillicrap, Ba, Norouzi, <i>Dream to Control: Learning Behaviors by Latent Imagination</i>, ICLR 2020（arXiv:1912.01603）.<br>
+[2] Hafner, Lillicrap, Norouzi, Ba, <i>Mastering Atari with Discrete World Models</i>, ICLR 2021（arXiv:2010.02193）.<br>
+[3] Hafner, Pasukonis, Ba, Lillicrap, <i>Mastering diverse control tasks through world models</i>, Nature 640, 2025.<br>
+[4] Romero, Shenai, Geles, Aljalbout, Scaramuzza, <i>Dream to Fly: Model-Based Reinforcement Learning for Vision-Based Drone Flight</i>, arXiv:2501.14377, 2025.<br>
+[5] Verraest, Bahnam, Ferede, de Croon, De Wagter, <i>SkyDreamer: Interpretable End-to-End Vision-Based Drone Racing with Model-Based Reinforcement Learning</i>, arXiv:2510.14783, 2025.<br>
+公式與圖表說明依據原始論文內容重新整理與詮釋，僅供課堂教學使用。
+</footer>
+
+</div>
+</body>
+</html>
