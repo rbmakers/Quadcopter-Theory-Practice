@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>策略梯度方法：從 REINFORCE 到 Actor-Critic</title>
+<style>
+body{font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;line-height:1.8;max-width:1100px;margin:0 auto;padding:28px;color:#222;background:#fafafa}
+h1,h2,h3{color:#163a5f} h1{border-bottom:3px solid #163a5f;padding-bottom:12px}
+section{background:#fff;padding:22px 30px;margin:22px 0;border-radius:10px;box-shadow:0 1px 4px #ddd}
+.eq{font-family:"Times New Roman",serif;text-align:center;font-size:1.25em;margin:18px 0;padding:8px}
+.box{background:#f3f7fb;border-left:5px solid #3474a8;padding:14px 18px;margin:16px 0}
+.warn{background:#fff7e8;border-left:5px solid #d48a22;padding:14px 18px;margin:16px 0}
+pre{background:#f4f4f4;padding:16px;border-radius:8px;overflow:auto}
+table{border-collapse:collapse;width:100%;margin:15px 0}th,td{border:1px solid #ccc;padding:10px;text-align:center}th{background:#eef3f8}
+code{background:#f1f1f1;padding:2px 5px;border-radius:4px}
+.footer{color:#666;font-size:.9em;margin-top:40px}
+</style>
+<script>
+window.MathJax = { tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]}, svg:{fontCache:'global'} };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+<h1>策略梯度方法<br>從 REINFORCE、Reward-to-Go、Baseline 到 Actor–Critic</h1>
+
+<div class="box">
+<b>教學定位：</b>碩士班「強化學習」課程。<br>
+本講義以 Chapter 10 的策略梯度主線為基礎，並系統整理後續討論中最容易混淆的概念：<br>
+<b>Trajectory、Reward-to-Go、Value Function、Advantage、Actor、Critic，以及每次 iteration 中兩個神經網路的更新關係。</b>
+</div>
+
+<section>
+<h2>1. 學習目標</h2>
+<ul>
+<li>理解 Value-Based 與 Policy-Based Reinforcement Learning 的根本差異。</li>
+<li>理解 Policy Gradient 為何可以直接最佳化策略。</li>
+<li>理解 REINFORCE 的梯度估計來源。</li>
+<li>理解 Reward-to-Go 為何可以降低不必要的變異數。</li>
+<li>精確區分「單次 trajectory sample」與「期望 value」。</li>
+<li>理解 Baseline 與 Advantage 的意義。</li>
+<li>理解 Actor 與 Critic 在同一批資料上的不同最佳化目標。</li>
+<li>建立從 REINFORCE with Baseline 到 TD Learning 與 A2C 的概念橋樑。</li>
+</ul>
+</section>
+
+<section>
+<h2>2. 為什麼需要 Policy-Based Methods？</h2>
+<p>傳統 Value-Based 方法先學習：</p>
+<div class="eq">\[Q^*(s,a)\]</div>
+<p>再由：</p>
+<div class="eq">\[\pi^*(s)=\arg\max_a Q^*(s,a)\]</div>
+<p>取得最佳 action。因此基本流程是：</p>
+<pre>State → Q(s,a) → argmax → Action</pre>
+<p>這對離散 action 很自然，但對高維或連續 action space，列舉所有 action 的 Q value 可能十分困難。</p>
+<p>Policy-Based 方法則直接參數化：</p>
+<div class="eq">\[\boxed{\pi_\theta(a|s)}\]</div>
+<pre>State → Policy Network → Action Distribution → Sample Action</pre>
+<p>其中 \(\theta\) 是 Policy Network 的參數。</p>
+</section>
+
+<section>
+<h2>3. Policy Gradient 的最佳化目標</h2>
+<p>策略梯度直接最大化目前 policy 的期望回報：</p>
+<div class="eq">\[\boxed{J(\theta)=\mathbb E_{\tau\sim\pi_\theta}[R(\tau)]}\]</div>
+<p>因此：</p>
+<div class="eq">\[\theta^*=\arg\max_\theta J(\theta)\]</div>
+<p>若直接以梯度上升表示：</p>
+<div class="eq">\[\boxed{\theta_{k+1}=\theta_k+\alpha\nabla_\theta J(\theta_k)}\]</div>
+<div class="box">
+<b>核心觀念：</b>Actor 的真正目標不是讓 Advantage 變成 0，而是最大化 expected return \(J(\theta)\)。
+</div>
+</section>
+
+<section>
+<h2>4. Trajectory 與 Return</h2>
+<p>一條 trajectory 可以表示為：</p>
+<div class="eq">\[\tau=(s_0,a_0,r_0,s_1,a_1,r_1,\ldots,s_T)\]</div>
+<p>整條 trajectory 的總回報：</p>
+<div class="eq">\[R(\tau)=\sum_{t=0}^{T-1}r_t\]</div>
+<p>重要的是：一次與 environment 的實際互動，只產生一條具體的 sample trajectory。</p>
+<div class="eq">\[\boxed{\tau_i=\text{一條實際採樣到的 trajectory}}\]</div>
+</section>
+
+<section>
+<h2>5. REINFORCE：用 Return 強化成功的行為</h2>
+<p>策略梯度的基本形式為：</p>
+<div class="eq">\[\boxed{\nabla_\theta J(\theta)=\mathbb E\left[\sum_t\nabla_\theta\log\pi_\theta(a_t|s_t)R(\tau)\right]}\]</div>
+<p>Monte Carlo 估計：</p>
+<div class="eq">\[\nabla_\theta J(\theta)\approx\frac1N\sum_{i=1}^N\sum_t\nabla_\theta\log\pi_\theta(a_t|s_t)R(\tau_i)\]</div>
+<p>直觀上：</p>
+<pre>Return 高 → 增加 trajectory 中 action 的機率
+Return 低 → 降低 trajectory 中 action 的機率</pre>
+</section>
+
+<section>
+<h2>6. Reward-to-Go：不是整條 trajectory，而是 trajectory 中某個時間點之後的回報</h2>
+<p>對一條特定 trajectory \(\tau\)，在時間 \(t\) 定義：</p>
+<div class="eq">\[\boxed{R_t(\tau)=r_t+\gamma r_{t+1}+\gamma^2r_{t+2}+\cdots}\]</div>
+<p>因此：</p>
+<div class="eq">\[\boxed{R_t=\text{某條特定 trajectory 中，從 }s_t\text{ 開始的實際 sample return}}\]</div>
+<div class="warn">
+<b>關鍵：</b>Reward-to-Go 不是「平均值」。它是一次實際 trajectory 所觀察到的未來結果，因此具有 sampling noise。
+</div>
+<p>Reward-to-Go Policy Gradient：</p>
+<div class="eq">\[\boxed{\nabla_\theta J(\theta)=\mathbb E\left[\sum_t\nabla_\theta\log\pi_\theta(a_t|s_t)R_t\right]}\]</div>
+</section>
+
+<section>
+<h2>7. Critic 的 Value：不是某一次結果，而是期望值</h2>
+<p>真正的 state value 定義為：</p>
+<div class="eq">\[\boxed{V^\pi(s_t)=\mathbb E_\pi[R_t\mid s_t]}\]</div>
+<p>也就是從同一狀態 \(s_t\) 出發，在目前 policy \(\pi\) 下，考慮所有可能未來 trajectory 的期望回報。</p>
+
+<table>
+<tr><th>Trajectory sample</th><th>Reward-to-Go</th></tr>
+<tr><td>\(\tau_1\)</td><td>100</td></tr>
+<tr><td>\(\tau_2\)</td><td>70</td></tr>
+<tr><td>\(\tau_3\)</td><td>120</td></tr>
+<tr><td>\(\tau_4\)</td><td>90</td></tr>
+<tr><td>理想 Value</td><td>\(V^\pi(s_t)\approx\) 這些可能結果的期望值</td></tr>
+</table>
+
+<div class="box">
+\[
+\boxed{R_t=\text{單次 sample}}
+\]
+\[
+\boxed{V^\pi(s_t)=\text{在目前 policy 下的 expected return}}
+\]
+</div>
+</section>
+
+<section>
+<h2>8. Baseline 與 Advantage：比較「這次」和「平均」</h2>
+<p>加入 baseline 後：</p>
+<div class="eq">\[\boxed{\hat A_t=R_t-V_\phi(s_t)}\]</div>
+<p>這表示：</p>
+<div class="eq">\[\boxed{\text{這次實際結果}-\text{Critic 預測的平均結果}}\]</div>
+<table>
+<tr><th>情況</th><th>解讀</th></tr>
+<tr><td>\(\hat A_t>0\)</td><td>這次比預期好，增加該 action 的機率</td></tr>
+<tr><td>\(\hat A_t<0\)</td><td>這次比預期差，降低該 action 的機率</td></tr>
+<tr><td>\(\hat A_t\approx0\)</td><td>這次結果與 Critic 預測接近</td></tr>
+</table>
+</section>
+
+<section>
+<h2>9. Advantage 趨近於 0 是否代表訓練成功？</h2>
+<p><b>答案：不一定。</b></p>
+<p>真正的 Advantage 定義是：</p>
+<div class="eq">\[\boxed{A^\pi(s,a)=Q^\pi(s,a)-V^\pi(s)}\]</div>
+<p>若某次使用 Monte Carlo estimate：</p>
+<div class="eq">\[\hat A_t=R_t-V_\phi(s_t)\]</div>
+<p>趨近於 0，只能表示：</p>
+<div class="eq">\[V_\phi(s_t)\approx R_t\]</div>
+<p>對於大量樣本而言，較理想的是：</p>
+<div class="eq">\[\boxed{V_\phi(s)\rightarrow V^\pi(s)}\]</div>
+<div class="warn">
+即使一個 policy 表現很差，只要 Critic 能準確預測它「會表現很差」，仍可能出現小的 value prediction error。因此 \(A\approx0\) 並不等於 optimal policy。
+</div>
+<p>Actor 真正追求的是：</p>
+<div class="eq">\[\boxed{J(\theta)\rightarrow J^*}\]</div>
+<p>或在收斂點附近：</p>
+<div class="eq">\[\boxed{\nabla_\theta J(\theta)\rightarrow0}\]</div>
+</section>
+
+<section>
+<h2>10. Actor 與 Critic 的兩個不同目標</h2>
+<h3>10.1 Actor：最大化 Expected Return</h3>
+<div class="eq">\[\boxed{\max_\theta J(\theta)}\]</div>
+<p>Policy gradient estimator：</p>
+<div class="eq">\[\nabla_\theta J\approx\sum_t\nabla_\theta\log\pi_\theta(a_t|s_t)\hat A_t\]</div>
+
+<h3>10.2 Critic：最小化 Value Prediction Error</h3>
+<p>在 Monte Carlo baseline 中：</p>
+<div class="eq">\[\boxed{L_V(\phi)=\frac12(R_t-V_\phi(s_t))^2}\]</div>
+<p>目標：</p>
+<div class="eq">\[\boxed{\min_\phi L_V(\phi)}\]</div>
+
+<table>
+<tr><th>Network</th><th>參數</th><th>目標</th><th>更新概念</th></tr>
+<tr><td>Actor / Policy</td><td>\(\theta\)</td><td>最大化 \(J(\theta)\)</td><td>Gradient Ascent</td></tr>
+<tr><td>Critic / Value</td><td>\(\phi\)</td><td>最小化 \(L_V(\phi)\)</td><td>Gradient Descent</td></tr>
+</table>
+</section>
+
+<section>
+<h2>11. 一次 Iteration 中兩個 Network 如何更新？</h2>
+<p>假設 iteration \(k\) 開始時：</p>
+<div class="eq">\[\pi_{\theta_k},\qquad V_{\phi_k}\]</div>
+
+<h3>Step 1：使用目前 Policy 收集 trajectory</h3>
+<div class="eq">\[\tau\sim\pi_{\theta_k}\]</div>
+
+<h3>Step 2：計算 Reward-to-Go</h3>
+<div class="eq">\[R_t=r_t+\gamma r_{t+1}+\cdots\]</div>
+
+<h3>Step 3：使用舊 Critic 計算 Advantage</h3>
+<div class="eq">\[\boxed{\hat A_t=R_t-V_{\phi_k}(s_t)}\]</div>
+
+<h3>Step 4：更新 Actor</h3>
+<div class="eq">\[\boxed{\theta_{k+1}=\theta_k+\alpha\nabla_\theta J(\theta_k)}\]</div>
+
+<h3>Step 5：更新 Critic</h3>
+<div class="eq">\[\boxed{\phi_{k+1}=\phi_k-\beta\nabla_\phi L_V(\phi_k)}\]</div>
+
+<pre>
+Iteration k
+
+(θk, φk)
+   │
+   ▼
+Collect trajectories using πθk
+   │
+   ▼
+Compute Rt
+   │
+   ├───────────────┐
+   ▼               ▼
+Ât = Rt - Vφk(st)  Value target = Rt
+   │               │
+   ▼               ▼
+Update Actor       Update Critic
+   │               │
+   ▼               ▼
+θk+1              φk+1
+</pre>
+
+<div class="box">
+<b>實作上的重要觀念：</b>通常兩個 loss 都由同一批 rollout 資料計算。是否在程式中「先呼叫 Actor optimizer 再呼叫 Critic optimizer」不是理論本質；關鍵是 Advantage / target 對應到收集資料時的 policy 與 critic。
+</div>
+</section>
+
+<section>
+<h2>12. 為什麼 Critic 可以學到「平均值」？</h2>
+<p>Critic 每次看到的是不同 trajectory 的 sample target：</p>
+<div class="eq">\[R_t^{(1)},R_t^{(2)},R_t^{(3)},\ldots\]</div>
+<p>透過最小化平方誤差：</p>
+<div class="eq">\[\min_\phi\mathbb E[(R_t-V_\phi(s_t))^2]\]</div>
+<p>在理想條件下，平方誤差的最佳預測器是 conditional expectation：</p>
+<div class="eq">\[\boxed{V_\phi(s_t)\rightarrow\mathbb E[R_t\mid s_t]=V^\pi(s_t)}\]</div>
+<p>因此單次 target 是 noisy sample，但大量樣本訓練後，Critic 學的是其期望結構。</p>
+</section>
+
+<section>
+<h2>13. 真正的 Advantage 與 Monte Carlo Advantage Estimate</h2>
+<table>
+<tr><th>名稱</th><th>公式</th><th>意義</th></tr>
+<tr><td>True Advantage</td><td>\(A^\pi(s,a)=Q^\pi(s,a)-V^\pi(s)\)</td><td>特定 action 相對於 policy 平均表現的優勢</td></tr>
+<tr><td>Monte Carlo Estimate</td><td>\(\hat A_t=R_t-V_\phi(s_t)\)</td><td>使用一條 sampled trajectory 的 return 估計 Advantage</td></tr>
+</table>
+<p>因此：</p>
+<div class="eq">\[\boxed{\hat A_t\text{ 是 Advantage 的 sample-based estimate，不等於精確的 }A^\pi(s,a)}\]</div>
+</section>
+
+<section>
+<h2>14. 從 REINFORCE with Baseline 到 A2C</h2>
+<p>Monte Carlo Baseline：</p>
+<div class="eq">\[\boxed{\hat A_t=R_t-V_\phi(s_t)}\]</div>
+<p>其中 \(R_t\) 必須等待後續 trajectory，甚至 episode 結束才能完整計算。</p>
+<p>TD(0) 則使用：</p>
+<div class="eq">\[\boxed{\delta_t=r_{t+1}+\gamma V_\phi(s_{t+1})-V_\phi(s_t)}\]</div>
+
+<pre>
+REINFORCE with Baseline
+完整未來實際回報 Rt
+          │
+          ▼
+      Rt - V(st)
+
+        ↓ 演化
+
+TD / Actor-Critic
+一步真實 reward + 未來 value 預測
+          │
+          ▼
+r(t+1) + γV(s(t+1)) - V(st)
+</pre>
+
+<p>這個 \(\delta_t\) 同時具有兩種角色：</p>
+<ul>
+<li>作為 Critic 的 TD error。</li>
+<li>作為 Actor 更新時的 Advantage-like learning signal。</li>
+</ul>
+</section>
+
+<section>
+<h2>15. 核心概念總結</h2>
+<div class="box">
+<p><b>第一：</b></p>
+<div class="eq">\[R_t=\text{一條特定 trajectory 的實際 sample}\]</div>
+
+<p><b>第二：</b></p>
+<div class="eq">\[V^\pi(s)=\mathbb E_\pi[R_t\mid s]\]</div>
+
+<p><b>第三：</b></p>
+<div class="eq">\[\hat A_t=R_t-V_\phi(s_t)\]</div>
+<p>表示「這次實際結果相對於 Critic 預期的好壞」。</p>
+
+<p><b>第四：</b></p>
+<div class="eq">\[\max_\theta J(\theta)\]</div>
+<p>是 Actor 的目標。</p>
+
+<p><b>第五：</b></p>
+<div class="eq">\[\min_\phi(R_t-V_\phi(s_t))^2\]</div>
+<p>是 Critic 的目標。</p>
+
+<p><b>第六：</b></p>
+<div class="eq">\[A\rightarrow0\]</div>
+<p>不能單獨作為「Policy 已最優」的判斷。</p>
+</div>
+</section>
+
+<section>
+<h2>16. 整體知識地圖</h2>
+<pre>
+Value-Based RL
+      │
+      ▼
+Learn Q(s,a)
+      │
+      ▼
+argmax Q(s,a)
+      │
+      │  連續 / 高維 Action 的困難
+      ▼
+Policy-Based RL
+      │
+      ▼
+πθ(a|s)
+      │
+      ▼
+REINFORCE
+      │
+      │  使用 R(τ)
+      ▼
+Reward-to-Go
+      │
+      │  使用 Rt
+      ▼
+Baseline
+      │
+      ▼
+Rt - Vφ(st)
+      │
+      ▼
+Advantage Estimate
+      │
+      ▼
+Actor + Critic
+      │
+      ▼
+TD Learning
+      │
+      ▼
+δt = rt+1 + γV(st+1) - V(st)
+      │
+      ▼
+A2C / A3C / PPO
+</pre>
+</section>
+
+<section>
+<h2>17. 建議的課堂思考題</h2>
+<ol>
+<li>若 \(R_t=120\)，\(V_\phi(s_t)=100\)，Actor 應如何調整採樣到的 action 機率？</li>
+<li>若 policy 很差，但 Critic 可以準確預測低回報，是否可能 \(\hat A_t\) 很小？為什麼？</li>
+<li>為什麼 Reward-to-Go 比整條 trajectory return 更符合 causality？</li>
+<li>為什麼 Critic 在大量 noisy return samples 下會逼近期望值，而不是記住每次 sample？</li>
+<li>TD error \(\delta_t\) 與 Monte Carlo Advantage Estimate 有哪些共同點與差異？</li>
+</ol>
+</section>
+
+<div class="footer">
+本文件整理自 Chapter 10 的 Policy Gradient 教學主線，以及本次延伸討論：Reward-to-Go、Critic Value、Advantage 與 Actor/Critic 更新關係。數學式使用 MathJax 呈現，適合直接以瀏覽器開啟。
+</div>
+</body>
+</html>

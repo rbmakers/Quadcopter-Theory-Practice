@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>深度強化學習：從 Bellman 方程到 PPO 的完整脈絡</title>
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      tags: 'ams'
+    },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+  :root{
+    --ink:#1b1f24;
+    --sub:#4b5563;
+    --line:#e3e6ea;
+    --accent:#1c4e9c;
+    --accent2:#0f766e;
+    --warn:#9a3412;
+    --bg:#fbfbfa;
+    --card:#ffffff;
+    --code:#f4f5f7;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Noto Serif TC","Georgia",serif;
+    line-height:1.85; font-size:16.5px;
+  }
+  .layout{ display:flex; max-width:1400px; margin:0 auto; }
+  nav#toc{
+    position:sticky; top:0; align-self:flex-start;
+    width:280px; min-width:230px; height:100vh; overflow-y:auto;
+    border-right:1px solid var(--line); padding:28px 18px 60px 22px;
+    font-family:"Noto Sans TC",sans-serif; font-size:13.6px; background:var(--bg);
+  }
+  nav#toc h2{font-size:15px;color:var(--accent);letter-spacing:.05em;margin:0 0 14px;}
+  nav#toc a{
+    display:block; color:var(--sub); text-decoration:none; padding:4px 0 4px 10px;
+    border-left:2px solid transparent; margin-bottom:1px;
+  }
+  nav#toc a.h1{color:var(--ink);font-weight:700;margin-top:14px;padding-left:2px;border-left:none;}
+  nav#toc a:hover{color:var(--accent); border-left-color:var(--accent);}
+  main{ flex:1; min-width:0; padding:46px 60px 120px; }
+  .cover{
+    padding:34px 0 40px; border-bottom:3px solid var(--accent); margin-bottom:46px;
+  }
+  .cover .tag{ font-family:"Noto Sans TC",sans-serif; color:var(--accent2); letter-spacing:.18em; font-size:13px; font-weight:700;}
+  .cover h1{ font-size:33px; margin:10px 0 6px; color:var(--ink); line-height:1.4;}
+  .cover .sub{ color:var(--sub); font-family:"Noto Sans TC",sans-serif; font-size:14.5px;}
+  section{ margin-bottom:64px; scroll-margin-top:20px; }
+  h1.part{
+    font-family:"Noto Sans TC",sans-serif; font-size:12.5px; letter-spacing:.22em;
+    color:#fff; background:var(--accent); display:inline-block; padding:6px 14px; border-radius:3px; margin-bottom:6px;
+  }
+  h2{
+    font-size:25px; margin:0 0 22px; padding-bottom:10px; border-bottom:1px solid var(--line);
+    color:var(--ink);
+  }
+  h3{ font-size:19px; color:var(--accent); margin:34px 0 12px; }
+  h4{ font-size:16px; color:var(--accent2); margin:22px 0 8px; font-family:"Noto Sans TC",sans-serif;}
+  p{ margin:0 0 14px; }
+  .lead{ color:var(--sub); font-size:15.5px; }
+  .box{
+    background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent);
+    border-radius:6px; padding:16px 20px; margin:18px 0;
+  }
+  .box.key{border-left-color:var(--warn); background:#fff8f2;}
+  .box.derive{border-left-color:var(--accent2); background:#f4fbfa;}
+  .box.compare{border-left-color:#7c3aed; background:#faf8ff;}
+  .box-title{
+    font-family:"Noto Sans TC",sans-serif; font-weight:700; font-size:13px; letter-spacing:.05em;
+    color:var(--accent); text-transform:uppercase; margin-bottom:8px;
+  }
+  .box.key .box-title{color:var(--warn);}
+  .box.derive .box-title{color:var(--accent2);}
+  .box.compare .box-title{color:#7c3aed;}
+  table{ border-collapse:collapse; width:100%; margin:16px 0; font-size:14.6px; font-family:"Noto Sans TC",sans-serif;}
+  th,td{ border:1px solid var(--line); padding:8px 12px; text-align:left; vertical-align:top;}
+  th{ background:#f0f3f8; color:var(--ink); font-weight:700;}
+  tr:nth-child(even) td{ background:#fafbfc; }
+  code, .mono{ font-family:"SFMono-Regular",Consolas,monospace; background:var(--code); padding:1px 6px; border-radius:3px; font-size:13.6px;}
+  pre{ background:var(--code); border:1px solid var(--line); border-radius:6px; padding:14px 16px; overflow-x:auto; font-size:13.4px; line-height:1.6;}
+  .step{ font-family:"Noto Sans TC",sans-serif; }
+  .step ol{padding-left:22px;}
+  .step li{margin-bottom:6px;}
+  .flow{
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:20px 0;
+    font-family:"Noto Sans TC",sans-serif; font-size:13.6px;
+  }
+  .flow .node{
+    background:#eef3fb; border:1px solid #c9d8ef; color:var(--accent); padding:9px 14px;
+    border-radius:6px; font-weight:700; text-align:center;
+  }
+  .flow .arrow{ color:#9aa4b2; font-size:18px; }
+  .note{ font-size:13.8px; color:var(--sub); font-family:"Noto Sans TC",sans-serif;}
+  .divider{ height:1px; background:var(--line); margin:40px 0; }
+  .footer{
+    margin-top:70px; padding-top:20px; border-top:1px solid var(--line);
+    color:var(--sub); font-family:"Noto Sans TC",sans-serif; font-size:13px;
+  }
+  .badge{
+    display:inline-block; font-family:"Noto Sans TC",sans-serif; font-size:11.6px; font-weight:700;
+    padding:2px 9px; border-radius:12px; margin-right:6px; letter-spacing:.03em;
+  }
+  .badge.model-based{ background:#e6f0ff; color:#1c4e9c;}
+  .badge.model-free{ background:#e6f7f2; color:#0f766e;}
+  .badge.on-policy{ background:#fff2e0; color:#9a5b00;}
+  .badge.off-policy{ background:#fdeaea; color:#9a3412;}
+  .badge.discrete{ background:#eef0f4; color:#374151;}
+  .badge.continuous{ background:#f3ecff; color:#6d28d9;}
+  .example{
+    border:1px dashed #c9d0da; border-radius:6px; padding:14px 18px; margin:14px 0; background:#fcfcfb;
+    font-size:15px;
+  }
+  @media print{
+    nav#toc{display:none;}
+    main{padding:0;}
+  }
+  @media (max-width:900px){
+    nav#toc{display:none;}
+    main{padding:30px 22px;}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav id="toc">
+  <h2>目錄 CONTENTS</h2>
+  <a class="h1" href="#roadmap">0. 全書地圖：一條演化脈絡</a>
+
+  <a class="h1" href="#part1">Part I　問題定義</a>
+  <a href="#s1-1">1.1 MDP 與報酬</a>
+  <a href="#s1-2">1.2 價值函數與 Q 函數</a>
+  <a href="#s1-3">1.3 Bellman 期望方程</a>
+  <a href="#s1-4">1.4 Bellman 最適方程</a>
+
+  <a class="h1" href="#part2">Part II　Model-Based：動態規劃</a>
+  <a href="#s2-1">2.1 Value Iteration</a>
+  <a href="#s2-2">2.2 Policy Iteration</a>
+  <a href="#s2-3">2.3 DP 的侷限</a>
+
+  <a class="h1" href="#part3">Part III　Model-Free 預測與控制</a>
+  <a href="#s3-1">3.1 Monte Carlo 預測</a>
+  <a href="#s3-2">3.2 增量平均與 MC 控制</a>
+  <a href="#s3-3">3.3 Temporal-Difference 學習</a>
+  <a href="#s3-4">3.4 SARSA（on-policy）</a>
+  <a href="#s3-5">3.5 Q-learning（off-policy）</a>
+  <a href="#s3-6">3.6 DP / MC / TD 總比較</a>
+
+  <a class="h1" href="#part4">Part IV　價值函數逼近：DQN</a>
+  <a href="#s4-1">4.1 為何需要函數逼近</a>
+  <a href="#s4-2">4.2 DQN：Replay Buffer 與 Target Network</a>
+  <a href="#s4-3">4.3 Double DQN</a>
+  <a href="#s4-4">4.4 Prioritized Experience Replay</a>
+  <a href="#s4-5">4.5 Dueling DQN（Advantage Function 首次登場）</a>
+  <a href="#s4-6">4.6 DRQN（POMDP）</a>
+
+  <a class="h1" href="#part5">Part V　Policy-Based：Policy Gradient</a>
+  <a href="#s5-1">5.1 為何需要 Policy-Based 方法</a>
+  <a href="#s5-2">5.2 目標函數與 Policy Gradient 定理</a>
+  <a href="#s5-3">5.3 REINFORCE 演算法</a>
+  <a href="#s5-4">5.4 Reward-to-go</a>
+  <a href="#s5-5">5.5 高變異數問題 → Baseline</a>
+  <a href="#s5-6">5.6 Baseline 演化為 Value Network</a>
+
+  <a class="h1" href="#part6">Part VI　Actor-Critic：A2C / A3C</a>
+  <a href="#s6-1">6.1 從 REINFORCE-with-Baseline 到 Actor-Critic</a>
+  <a href="#s6-2">6.2 Advantage Actor-Critic（A2C）</a>
+  <a href="#s6-3">6.3 Asynchronous A3C</a>
+
+  <a class="h1" href="#part7">Part VII　連續動作：DDPG / TD3 / SAC</a>
+  <a href="#s7-1">7.1 連續動作空間的困境</a>
+  <a href="#s7-2">7.2 DDPG：確定性 Actor + DQN Critic</a>
+  <a href="#s7-3">7.3 TD3：三個關鍵修正</a>
+  <a href="#s7-4">7.4 SAC：最大熵 RL</a>
+
+  <a class="h1" href="#part8">Part VIII　Trust Region 與 PPO</a>
+  <a href="#s8-1">8.1 為何 Policy Gradient 步伐要「有界」</a>
+  <a href="#s8-2">8.2 Importance Sampling → Surrogate Objective</a>
+  <a href="#s8-3">8.3 TRPO 概念</a>
+  <a href="#s8-4">8.4 PPO-Clip 推導</a>
+  <a href="#s8-5">8.5 PPO 完整演算法</a>
+
+  <a class="h1" href="#part9">Part IX　總結地圖</a>
+  <a href="#s9-1">9.1 全家族族譜</a>
+  <a href="#s9-2">9.2 對照總表</a>
+</nav>
+
+<main>
+
+<div class="cover">
+  <div class="tag">GRADUATE COURSE NOTES · 深度強化學習</div>
+  <h1>從 Bellman 方程到 PPO：<br>價值函數與策略梯度的統一脈絡</h1>
+  <div class="sub">零到飛（Zero to Fly）課程系列教材　·　控制理論 × 強化學習　·　繁體中文講義（MathJax 數學推導版）</div>
+</div>
+
+<section id="roadmap">
+<h2>0. 全書地圖：一條演化脈絡</h2>
+<p class="lead">
+這份講義的核心目的，不是把 DP、MC、TD、DQN、Policy Gradient、Actor-Critic 當成互不相干的主題羅列，
+而是要讓你看清楚：<b>強化學習的演算法史，其實是「怎麼估計報酬」與「怎麼改善行為」這兩件事，
+在 model-based / model-free、value-based / policy-based 這幾個維度上不斷交叉演化的結果。</b>
+</p>
+
+<div class="box key">
+<div class="box-title">本講義主軸（請牢記此圖，後續每一章都會回扣這裡）</div>
+<div class="flow">
+  <div class="node">Bellman 方程<br><span class="note">V, Q 的遞迴定義</span></div>
+  <div class="arrow">→</div>
+  <div class="node">動態規劃<br><span class="note">已知 P(s'|s,a)</span></div>
+  <div class="arrow">→</div>
+  <div class="node">Monte Carlo<br><span class="note">model-free，等到回合結束</span></div>
+  <div class="arrow">→</div>
+  <div class="node">TD / Q-learning<br><span class="note">bootstrapping</span></div>
+  <div class="arrow">→</div>
+  <div class="node">DQN<br><span class="note">神經網路逼近 Q</span></div>
+</div>
+<div class="flow">
+  <div class="node">Policy Gradient<br><span class="note">直接優化 π<sub>θ</sub></span></div>
+  <div class="arrow">→</div>
+  <div class="node">REINFORCE<br><span class="note">高變異數</span></div>
+  <div class="arrow">→</div>
+  <div class="node">+ Baseline<br><span class="note">b = V<sub>φ</sub>(s)</span></div>
+  <div class="arrow">→</div>
+  <div class="node"><b>Actor + Critic</b><br><span class="note">A2C / A3C</span></div>
+  <div class="arrow">→</div>
+  <div class="node">DDPG / TD3 / SAC<br>／ PPO<br><span class="note">Critic 借用 DQN 血統<br>Actor 借用 PG 血統</span></div>
+</div>
+<p style="margin-top:10px;">
+關鍵洞見：<b>「Baseline」這個為了降低變異數而加入 REINFORCE 的技巧，其本體就是一個 Value Network；
+一旦這個 Value Network 開始「即時」（每個 time step）提供回饋，而不是等整個回合結束才用，
+Actor-Critic 架構就自然浮現。</b>
+而 Critic 網路要怎麼訓練，用的正是我們在 Part III／IV 學到的 TD 誤差與 Bellman 方程——
+這就是為什麼 DDPG 的 Critic 本質上就是一個「接受 (s,a) 的 DQN」。
+</p>
+</div>
+</section>
+
+
+<section id="part1">
+<h1 class="part">PART I</h1>
+<h2>問題定義：MDP 與 Bellman 方程</h2>
+
+<h3 id="s1-1">1.1 Markov Decision Process 與報酬</h3>
+<p>
+強化學習的問題被形式化為一個 <b>Markov Decision Process (MDP)</b>：agent 在狀態 $s$ 下依照策略 $\pi$
+選擇動作 $a$，環境依轉移機率 $P(s'|s,a)$ 進入下一狀態 $s'$，並給出即時獎勵 $R(s,a,s')$。
+一條軌跡（trajectory / episode）為
+$$\tau = (s_0,a_0,r_0,s_1,a_1,r_1,\dots,s_{T})$$
+其<b>回報（return）</b>定義為未來獎勵的（折扣）總和：
+$$R(\tau)=\sum_{t=0}^{T-1}\gamma^t r_t$$
+其中 $\gamma\in[0,1]$ 是折扣因子。強化學習的終極目標只有一句話：
+<b>找到一個策略 $\pi$，使得期望回報最大化。</b>
+</p>
+
+<h3 id="s1-2">1.2 價值函數與 Q 函數</h3>
+<div class="box">
+<div class="box-title">定義</div>
+$$V^\pi(s)=\mathbb{E}_{\tau\sim\pi}\big[R(\tau)\mid s_0=s\big]
+\qquad\qquad
+Q^\pi(s,a)=\mathbb{E}_{\tau\sim\pi}\big[R(\tau)\mid s_0=s,a_0=a\big]$$
+</div>
+<p>
+$V^\pi(s)$ 是「從狀態 $s$ 出發、之後都照 $\pi$ 走」的期望回報；$Q^\pi(s,a)$ 是「在 $s$ 先強制執行 $a$，
+之後才照 $\pi$ 走」的期望回報。兩者的關係非常直覺：
+$$V^\pi(s)=\max_\pi V^\pi(s) \;\Rightarrow\; V^{*}(s)=\max_a Q^{*}(s,a)$$
+這一行等式在後面會反覆出現：<b>「取最大 Q 值」就是「求最優 V」的具體作法</b>，也是 Value Iteration
+與 DQN 決策規則的根源。
+</p>
+
+<h3 id="s1-3">1.3 Bellman 期望方程</h3>
+<p>
+Bellman 方程的核心思想是<b>遞迴分解</b>：把「從現在開始的期望回報」拆成「這一步的獎勵」加上
+「折扣後、下一狀態的期望回報」。當環境是隨機的（stochastic environment），需要對下一狀態取期望：
+</p>
+<div class="box derive">
+<div class="box-title">推導：從單步展開到期望形式</div>
+<p>單一轉移：$V(s)=R(s,a,s')+\gamma V(s')$。若轉移機率為 $P(s'|s,a)$，對所有可能的 $s'$ 取期望：</p>
+$$V^\pi(s)=\sum_{s'}P(s'|s,a)\big[R(s,a,s')+\gamma V^\pi(s')\big]$$
+<p>若策略本身也是隨機的（$\pi(a|s)$），再對動作取一次期望：</p>
+$$V^\pi(s)=\sum_a \pi(a|s)\sum_{s'}P(s'|s,a)\big[R(s,a,s')+\gamma V^\pi(s')\big]
+= \mathbb{E}_{\substack{a\sim\pi\\ s'\sim P}}\big[R(s,a,s')+\gamma V^\pi(s')\big]$$
+<p>同理可得 Q 函數的 Bellman 期望方程（此時動作已被選定，不需再對 $a$ 取期望）：</p>
+$$Q^\pi(s,a)=\sum_{s'}P(s'|s,a)\Big[R(s,a,s')+\gamma\sum_{a'}\pi(a'|s')Q^\pi(s',a')\Big]
+=\mathbb{E}_{s'\sim P}\big[R(s,a,s')+\gamma\,\mathbb{E}_{a'\sim\pi}Q^\pi(s',a')\big]$$
+</div>
+
+<h3 id="s1-4">1.4 Bellman 最適方程（Optimality Equation）</h3>
+<p>
+若我們不再「跟隨」一個給定策略，而是每一步都<b>選擇能讓價值最大化的動作</b>，
+就把 $\mathbb{E}_{a\sim\pi}$ 換成 $\max_a$：
+</p>
+<div class="box key">
+<div class="box-title">Bellman 最適方程 —— 全書最重要的兩條式子</div>
+$$V^{*}(s)=\max_a \mathbb{E}_{s'\sim P}\big[R(s,a,s')+\gamma V^{*}(s')\big]
+=\max_a\sum_{s'}P(s'|s,a)\big[R(s,a,s')+\gamma V^{*}(s')\big]$$
+$$Q^{*}(s,a)=\mathbb{E}_{s'\sim P}\big[R(s,a,s')+\gamma\max_{a'}Q^{*}(s',a')\big]$$
+</div>
+<p>
+把 $V^{*}(s')=\max_{a'}Q^{*}(s',a')$ 代進 $Q^{*}$ 的定義式，就能證明兩者一致，也導出
+一條被反覆使用的恆等式：
+$$Q^{*}(s,a)=\sum_{s'}P(s'|s,a)\big[R(s,a,s')+\gamma V^{*}(s')\big]\qquad(\star)$$
+$(\star)$ 這條式子有兩個方向的用途：<b>已知 $V^*$ 可推出 $Q^*$；已知所有 $Q^*(s,\cdot)$ 取最大值也可還原出 $V^*$。</b>
+這正是 Part II Value Iteration 演算法的理論基礎，之後在 Part IV 的 DQN loss function，
+以及 Part VII 的 DDPG critic loss，本質上都是在用資料去逼近 $(\star)$。
+</p>
+</section>
+
+
+<section id="part2">
+<h1 class="part">PART II</h1>
+<h2>Model-Based：動態規劃（Dynamic Programming）</h2>
+<p class="lead">
+動態規劃假設我們<b>已知</b>環境的模型，也就是轉移機率 $P(s'|s,a)$ 與獎勵函數 $R(s,a,s')$ 全部已知。
+在這個前提下，Bellman 方程不再只是「定義」，而可以直接拿來當「更新規則」反覆疊代求解。
+</p>
+
+<h3 id="s2-1">2.1 Value Iteration</h3>
+<div class="step">
+<ol>
+<li>把所有狀態的值初始化為 0（或任意值），建立初始 value table。</li>
+<li>對每個狀態—動作對，用目前的 value table 計算
+$Q(s,a)=\sum_{s'}P^a_{ss'}\big[R^a_{ss'}+\gamma V(s')\big]$。</li>
+<li>更新 $V(s)=\max_a Q(s,a)$，並反覆疊代直到收斂。</li>
+<li>收斂後，最優策略由 $\pi^{*}(s)=\arg\max_a Q(s,a)$ 直接取出。</li>
+</ol>
+</div>
+<h4>演算範例：3-state grid world（走迷宮 A → C，避開 B）</h4>
+<p>
+下面用一個完整、可自行驗算的小例子，示範 Value Iteration 的兩個步驟怎麼從頭跑到收斂。
+網格分成三格：<b>A</b>（起點）、<b>B</b>（斜線區塊，要盡量避開的危險格）、<b>C</b>（目標，抵達即結束）。
+每個狀態有兩個動作：<code>0</code> = 左右移動、<code>1</code> = 上下移動。
+</p>
+
+<div style="display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:18px 0;">
+<svg viewBox="0 0 300 210" width="260" height="182" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+  <defs>
+    <pattern id="hazard-hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#c9d0da" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect x="10" y="10" width="140" height="100" fill="#ffffff" stroke="#1b1f24" stroke-width="2"/>
+  <rect x="150" y="10" width="140" height="100" fill="url(#hazard-hatch)" stroke="#1b1f24" stroke-width="2"/>
+  <rect x="10" y="110" width="280" height="90" fill="#eef3fb" stroke="#1b1f24" stroke-width="2"/>
+  <text x="80" y="68" font-size="26" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">A</text>
+  <text x="220" y="68" font-size="26" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">B</text>
+  <text x="150" y="163" font-size="26" font-family="Georgia,serif" text-anchor="middle" fill="#1c4e9c">C</text>
+</svg>
+<div style="flex:1; min-width:240px;" class="note">
+<b>情境設定：</b>agent 從 A 出發，目標是抵達 C（一旦進入 C 回合立即結束，
+之後不再有動作與獎勵，因此依定義 $V^{*}(C)=0$）。B 是要盡量避開的格子，
+每停留一次會得到 $-1$ 的懲罰；抵達 C 得到 $+1$；其餘移動獎勵為 $0$。
+折扣因子取 $\gamma=1$（因為每個狀態每步都有機率直接跳到終止狀態 C，
+期望抵達時間有限，這是合法的 undiscounted episodic 設定）。
+</div>
+</div>
+
+
+
+<h4>Model：完整的 $P(s'|s,a)$ 與 $R(s,a,s')$</h4>
+<table>
+<tr><th>State $(s)$</th><th>Action $(a)$</th><th>Next State $(s')$</th><th>$P(s'|s,a)$</th><th>$R(s,a,s')$</th></tr>
+<tr><td>A</td><td>0（左右）</td><td>A</td><td>0.1</td><td>0</td></tr>
+<tr><td>A</td><td>0（左右）</td><td>B</td><td>0.8</td><td>-1</td></tr>
+<tr><td>A</td><td>0（左右）</td><td>C</td><td>0.1</td><td>+1</td></tr>
+<tr><td>A</td><td>1（上下）</td><td>A</td><td>0.1</td><td>0</td></tr>
+<tr><td>A</td><td>1（上下）</td><td>B</td><td>0.0</td><td>-1</td></tr>
+<tr><td>A</td><td>1（上下）</td><td>C</td><td>0.9</td><td>+1</td></tr>
+<tr><td>B</td><td>0（左右）</td><td>A</td><td>0.7</td><td>0</td></tr>
+<tr><td>B</td><td>0（左右）</td><td>B</td><td>0.2</td><td>-1</td></tr>
+<tr><td>B</td><td>0（左右）</td><td>C</td><td>0.1</td><td>+1</td></tr>
+<tr><td>B</td><td>1（上下）</td><td>A</td><td>0.0</td><td>0</td></tr>
+<tr><td>B</td><td>1（上下）</td><td>B</td><td>0.1</td><td>-1</td></tr>
+<tr><td>B</td><td>1（上下）</td><td>C</td><td>0.9</td><td>+1</td></tr>
+<tr><td>C</td><td colspan="4">終止狀態（terminal）：進入即回合結束，不再產生動作與獎勵，$V^{*}(C)=0$。</td></tr>
+</table>
+<p class="note">每一列 $\sum_{s'}P(s'|s,a)=1$（可自行加總驗證），此為合法機率分布。</p>
+
+<h4>Step 1 – Compute the optimal value function</h4>
+<p>初始化 $V_0(A)=V_0(B)=0$（$V(C)\equiv0$ 恆定不變）。第一輪疊代：</p>
+$$Q(A,0)=0.1(0{+}0)+0.8(-1{+}0)+0.1(1{+}0)=-0.7,\qquad
+Q(A,1)=0.1(0{+}0)+0.0(-1{+}0)+0.9(1{+}0)=0.9$$
+$$Q(B,0)=0.7(0{+}0)+0.2(-1{+}0)+0.1(1{+}0)=-0.1,\qquad
+Q(B,1)=0.0(0{+}0)+0.1(-1{+}0)+0.9(1{+}0)=0.8$$
+<p>取每個狀態的最大值 → $V_1(A)=\max(-0.7,\,0.9)=0.9$，$V_1(B)=\max(-0.1,\,0.8)=0.8$。第二輪代入 $V_1$：</p>
+$$Q(A,0)=0.1(0{+}0.9)+0.8(-1{+}0.8)+0.1(1{+}0)=0.03,\qquad
+Q(A,1)=0.1(0{+}0.9)+0.0(\cdot)+0.9(1{+}0)=0.99$$
+$$Q(B,0)=0.7(0{+}0.9)+0.2(-1{+}0.8)+0.1(1{+}0)=0.69,\qquad
+Q(B,1)=0.0(\cdot)+0.1(-1{+}0.8)+0.9(1{+}0)=0.88$$
+<p>→ $V_2(A)=0.99$，$V_2(B)=0.88$。把逐輪結果整理成表：</p>
+<table>
+<tr><th>疊代 $k$</th><th>$V_k(A)$</th><th>$V_k(B)$</th><th>$V_k(C)$</th></tr>
+<tr><td>0（初始）</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td>1</td><td>0.9</td><td>0.8</td><td>0</td></tr>
+<tr><td>2</td><td>0.99</td><td>0.88</td><td>0</td></tr>
+<tr><td>3</td><td>0.999</td><td>0.888</td><td>0</td></tr>
+<tr><td>4</td><td>0.9999</td><td>0.8888</td><td>0</td></tr>
+<tr><td>$k\to\infty$（收斂）</td><td><b>1.0</b></td><td><b>0.8889（= 8/9）</b></td><td>0</td></tr>
+</table>
+<div class="box derive">
+<div class="box-title">為什麼會呈現這種等比收斂？</div>
+<p>
+可以驗證：從第一輪開始，每個狀態的最佳動作就已經固定是「動作 1（上下，直接朝 C 前進）」，
+且之後每一輪都不再改變（貪婪動作一旦選定就不再變化，是這個例子收斂快的原因）。
+把 $a{=}1$ 代回 Bellman 更新式，並利用 $V(C)\equiv 0$，兩個狀態的更新各自退化成一條線性遞迴：
+</p>
+$$V_{k+1}(A)=0.1\big[0+V_k(A)\big]+0.9\big[1+0\big]=0.1\,V_k(A)+0.9
+\;\;\xrightarrow{k\to\infty}\;\; V^{*}(A)=\frac{0.9}{1-0.1}=1.0$$
+$$V_{k+1}(B)=0.1\big[-1+V_k(B)\big]+0.9\big[1+0\big]=0.1\,V_k(B)+0.8
+\;\;\xrightarrow{k\to\infty}\;\; V^{*}(B)=\frac{0.8}{1-0.1}=0.8\overline{8}=\tfrac{8}{9}$$
+<p>
+每一輪的誤差都乘上固定比例 $0.1$，這正是表格中 $0.9\to0.99\to0.999\to\cdots$ 這種「每輪多一個 9」
+的等比收斂模式的來源。最終的最優價值函數為
+$$V^{*}(A)=1.0,\qquad V^{*}(B)=\tfrac{8}{9}\approx0.8889,\qquad V^{*}(C)=0$$
+</p>
+</div>
+
+<h4>Step 2 – Extract the optimal policy from $V^{*}$</h4>
+<p>把收斂後的 $V^{*}$ 代回 $Q(s,a)=\sum_{s'}P^a_{ss'}\big[R^a_{ss'}+\gamma V^{*}(s')\big]$，重新算一次 Q 表：</p>
+$$Q(A,0)=0.1(0{+}1)+0.8\big(-1{+}\tfrac{8}{9}\big)+0.1(1{+}0)=0.111,\qquad
+Q(A,1)=0.1(0{+}1)+0.0(\cdot)+0.9(1{+}0)=1.000$$
+$$Q(B,0)=0.7(0{+}1)+0.2\big(-1{+}\tfrac{8}{9}\big)+0.1(1{+}0)=0.778,\qquad
+Q(B,1)=0.0(\cdot)+0.1\big(-1{+}\tfrac{8}{9}\big)+0.9(1{+}0)=0.889$$
+<table>
+<tr><th>State</th><th>Action</th><th>$Q(s,a)$</th></tr>
+<tr><td>A</td><td>0</td><td>0.111</td></tr>
+<tr><td style="border-top:2px solid var(--accent);">A</td><td style="border-top:2px solid var(--accent);"><b>1</b></td><td style="border-top:2px solid var(--accent);"><b>1.000 ← max</b></td></tr>
+<tr><td>B</td><td>0</td><td>0.778</td></tr>
+<tr><td style="border-top:2px solid var(--accent);">B</td><td style="border-top:2px solid var(--accent);"><b>1</b></td><td style="border-top:2px solid var(--accent);"><b>0.889 ← max</b></td></tr>
+</table>
+<p>
+依 $\pi^{*}(s)=\arg\max_a Q(s,a)$ 取每列最大值，得到最優策略
+$$\pi^{*}(A)=1,\qquad \pi^{*}(B)=1$$
+也就是說：<b>不論在 A 還是 B，最優策略都選擇動作 1（上下移動，直接朝 C 前進）</b>——
+因為動作 1 讓抵達 C 的機率最高（0.9），比起動作 0 有更高機率繞經或停留在懲罰格 B，
+動作 1 的期望回報明顯更高。這正是「先用 Step 1 算出 $V^{*}$，再用 Step 2 從 $V^{*}$
+反推 $\pi^{*}$」這套兩階段流程的完整示範。
+</p>
+
+<h3 id="s2-2">2.2 Policy Iteration</h3>
+<p>
+Value Iteration 直接對 <b>value function</b> 疊代到收斂再抽取策略；Policy Iteration 則交替進行
+兩個步驟，形成「評估 → 改善」的循環：
+</p>
+<div class="step">
+<ol>
+<li><b>Policy Evaluation：</b>固定策略 $\pi$，反覆用
+$V^\pi(s)=\sum_{s'}P^{\pi(s)}_{ss'}\big[R^{\pi(s)}_{ss'}+\gamma V^\pi(s')\big]$ 疊代至收斂，
+求出這個策略「有多好」。</li>
+<li><b>Policy Improvement：</b>用剛求出的 $V^\pi$ 算出 $Q(s,a)$，並令新策略
+$\pi'(s)=\arg\max_a Q(s,a)$。</li>
+<li>重複 1–2，直到策略不再改變。</li>
+</ol>
+</div>
+<div class="box compare">
+<div class="box-title">Value Iteration vs Policy Iteration</div>
+Value Iteration：每一輪只做「一次」評估更新就立刻取 max（評估與改善揉在一起，收斂較快但每輪成本高）。<br>
+Policy Iteration：評估要「跑到收斂」才進行一次改善（分工明確，是後面 Actor-Critic「評估—改善」交替思想的雛型）。
+</div>
+
+<h3 id="s2-3">2.3 DP 的侷限：為什麼我們需要 Model-Free 方法</h3>
+<p>
+DP 的每一步更新都需要枚舉 $P(s'|s,a)$——也就是說<b>必須事先知道環境的動力學模型</b>。
+現實中的大多數環境（Atari 遊戲畫面、機器人動力學、無人機氣動力）我們根本不知道轉移機率是什麼。
+這正是 Part III 要解決的問題：<b>能不能不知道 $P(s'|s,a)$，只靠「跟環境互動採樣」就估計出 $V$ 或 $Q$？</b>
+</p>
+</section>
+
+
+<section id="part3">
+<h1 class="part">PART III</h1>
+<h2>Model-Free 預測與控制：Monte Carlo 與 Temporal-Difference</h2>
+
+<h3 id="s3-1">3.1 Monte Carlo 預測</h3>
+<p>
+Monte Carlo（MC）方法完全不需要知道 $P(s'|s,a)$，其想法非常樸素：
+<b>讓 agent 依照策略把整個 episode 跑完，然後用「實際觀察到的回報」直接去估計 $V(s)$</b>：
+$$V(s)=\frac{\text{total\_return}(s)}{N(s)}$$
+即：對狀態 $s$ 出現過的每一次（first-visit 或 every-visit），把該次之後累積的實際回報記錄下來，
+取樣本平均，用大數法則保證這個估計會收斂到真值 $V^\pi(s)$。
+</p>
+
+<h3 id="s3-2">3.2 增量平均與 MC 控制</h3>
+<div class="box derive">
+<div class="box-title">從算術平均到增量平均（incremental mean）</div>
+<p>直接存下所有 return 再取平均，記憶體與計算量都不划算，且無法適應非平穩（non-stationary）環境。
+改寫為線上更新形式：</p>
+$$N(s_t)\leftarrow N(s_t)+1,\qquad
+V(s_t)\leftarrow V(s_t)+\frac{1}{N(s_t)}\big(R_t-V(s_t)\big)$$
+<p>把 $1/N(s_t)$ 換成固定的學習率 $\alpha$，就得到一個能追蹤非平穩環境、且形式與後面 TD/SGD 完全一致的
+更新規則——這是整份講義中<b>第一次出現「新估計 = 舊估計 + 學習率 × 誤差」</b>這個通用模板：</p>
+$$V(s_t)\leftarrow V(s_t)+\alpha\big(R_t-V(s_t)\big),\qquad
+Q(s_t,a_t)\leftarrow Q(s_t,a_t)+\alpha\big(R_t-Q(s_t,a_t)\big)$$
+</div>
+<p class="note">
+這個模板「新值 = 舊值 + $\alpha \times$（目標 − 舊值）」會在 TD、SARSA、Q-learning、DQN loss、
+甚至 Policy Gradient 的參數更新中不斷復現，只是「目標（target）」的計算方式一路演化。
+</p>
+
+<h3 id="s3-3">3.3 Temporal-Difference 學習：把「等到回合結束」換成「bootstrapping」</h3>
+<p>
+MC 有個致命缺點：<b>必須等整個 episode 結束才能算出 $R_t$</b>，這代表它無法應用在非回合式
+（continuous / non-episodic）任務上，episode 太長也會拖慢學習。TD learning 的關鍵洞見是：
+<b>不需要等到回合結束，可以借用 Bellman 方程「自己 bootstrap 自己」</b>——用 $r+\gamma V(s')$
+（TD target）取代 MC 的完整回報 $R_t$：
+</p>
+<div class="box key">
+<div class="box-title">TD(0) 更新規則</div>
+$$V(s)\leftarrow V(s)+\alpha\underbrace{\big(\,\underbrace{r+\gamma V(s')}_{\text{TD target（bootstrap 估計）}}-V(s)\,\big)}_{\text{TD error }\delta}$$
+</div>
+<div class="box compare">
+<div class="box-title">MC vs TD 的本質差異</div>
+<table>
+<tr><th></th><th>Monte Carlo</th><th>TD Learning</th></tr>
+<tr><td>更新依據</td><td>完整回報 $R$（真實、無偏，但要等到回合結束）</td><td>單步 bootstrap $r+\gamma V(s')$（有偏但變異數低，可線上更新）</td></tr>
+<tr><td>是否需要 model</td><td>否（model-free）</td><td>否（model-free）</td></tr>
+<tr><td>是否可用於連續任務</td><td>不可</td><td>可</td></tr>
+<tr><td>與 DP 的關係</td><td>無 bootstrapping</td><td>「借用」DP 的 Bellman 遞迴精神</td></tr>
+</table>
+</div>
+<p><b>TD 因此結合了 DP 的 bootstrapping 與 MC 的 model-free 兩大優點，是承先啟後的關鍵一步。</b></p>
+
+<h3 id="s3-4">3.4 SARSA：On-Policy TD Control</h3>
+<p>
+TD 只解決「預測」（給定策略估計 $V$）。要解決「控制」（找出最優策略），我們把 TD 更新從 $V(s)$
+換成 $Q(s,a)$，並用 <b>ε-greedy</b> 平衡探索與利用：
+</p>
+<div class="box">
+<div class="box-title">SARSA 更新規則（State-Action-Reward-State-Action）</div>
+$$Q(s,a)\leftarrow Q(s,a)+\alpha\big(r+\gamma Q(s',a')-Q(s,a)\big)$$
+<p class="note">關鍵：$a'$ 是「用同一套 ε-greedy 策略」在 $s'$ 實際選出來的動作——behavior policy 與被更新
+的 target policy 是同一個，所以稱為 <b>on-policy</b>。</p>
+</div>
+
+<h4>演算範例：FrozenLake 4×4，一步 SARSA 更新</h4>
+<p>
+沿用經典的 FrozenLake 4×4 環境：<code>S</code>=起點、<code>F</code>=可安全通行的冰面、
+<code>H</code>=結冰破洞（掉進去回合結束、獎勵 0）、<code>G</code>=目標（獎勵 +1）。
+狀態用 $(row,col)$ 表示，動作有 Up／Down／Left／Right 四種。設 $\alpha=0.1$，$\gamma=1$。
+</p>
+
+<div style="display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:18px 0;">
+<svg viewBox="0 0 280 280" width="230" height="230" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+  <defs>
+  <pattern id="hole-hatch-sarsa" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#e7b8b0" stroke-width="2"/></pattern>
+  <marker id="arrowhead-sarsa" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#c2410c"/></marker>
+  </defs>
+  <text x="60" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">1</text>
+  <text x="120" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">2</text>
+  <text x="180" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">3</text>
+  <text x="240" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">4</text>
+  <text x="18" y="64" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">1</text>
+  <text x="18" y="124" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">2</text>
+  <text x="18" y="184" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">3</text>
+  <text x="18" y="244" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">4</text>
+  <rect x="30" y="30" width="60" height="60" fill="#eef3fb" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1c4e9c">S</text>
+  <rect x="90" y="30" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="150" y="30" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="30" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="30" y="90" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="90" y="90" width="60" height="60" fill="url(#hole-hatch-sarsa)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="150" y="90" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="90" width="60" height="60" fill="url(#hole-hatch-sarsa)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="30" y="150" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="90" y="150" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="150" y="150" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="150" width="60" height="60" fill="url(#hole-hatch-sarsa)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="30" y="210" width="60" height="60" fill="url(#hole-hatch-sarsa)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="90" y="210" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="150" y="210" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="210" width="60" height="60" fill="#e6f7ee" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#0f766e">G</text>
+  <line x1="120" y1="254" x2="180" y2="254" stroke="#c2410c" stroke-width="2" marker-end="url(#arrowhead-sarsa)"/>
+  <circle cx="120" cy="254" r="6" fill="#c2410c"/>
+  <circle cx="180" cy="254" r="6" fill="none" stroke="#c2410c" stroke-width="2"/>
+  </svg>
+<div style="flex:1; min-width:260px;">
+<p class="note">目前 Q table 中與本例相關的幾列（其餘以 ⋮ 省略）：</p>
+<table style="font-size:13.6px;">
+<tr><th>State</th><th>Action</th><th>$Q$</th></tr>
+<tr><td>(4,2)</td><td>Up</td><td>0.3</td></tr>
+<tr><td>(4,2)</td><td>Down</td><td>0.5</td></tr>
+<tr><td>(4,2)</td><td>Left</td><td>0.1</td></tr>
+<tr><td style="border-top:2px solid var(--accent);">(4,2)</td><td style="border-top:2px solid var(--accent);"><b>Right</b></td><td style="border-top:2px solid var(--accent);"><b>0.8 ← 目前最大</b></td></tr>
+<tr><td>(4,3)</td><td>Up</td><td>0.1</td></tr>
+<tr><td>(4,3)</td><td>Down</td><td>0.3</td></tr>
+<tr><td style="border-top:2px solid var(--accent);">(4,3)</td><td style="border-top:2px solid var(--accent);"><b>Left</b></td><td style="border-top:2px solid var(--accent);"><b>1.0 ← 全域最大</b></td></tr>
+<tr><td>(4,3)</td><td>Right</td><td>0.9</td></tr>
+</table>
+</div>
+</div>
+
+<div class="step">
+<ol>
+<li>在狀態 $(4,2)$，以機率 $1-\epsilon$ 走「利用（exploit）」路線，選擇 Q 值最大的動作
+$\Rightarrow$ 選 <b>Right</b>（$Q=0.8$），移動到下一狀態 $(4,3)$，得到獎勵 $r=0$。</li>
+<li>在下一狀態 $(4,3)$，SARSA 必須先「實際選出」下一個動作 $a'$ 才能算 target——這次以機率
+$\epsilon$ 觸發探索，<b>隨機</b>選中 <b>Right</b>（$Q=0.9$），儘管 Left（$Q=1.0$）才是該狀態的最大值。</li>
+<li>代入 SARSA 更新規則 $Q(s,a)\leftarrow Q(s,a)+\alpha\big(r+\gamma Q(s',a')-Q(s,a)\big)$：
+$$Q\big((4,2),\text{Right}\big)=0.8+0.1\big(0+1\times0.9-0.8\big)=0.8+0.1(0.1)=\mathbf{0.81}$$</li>
+</ol>
+</div>
+<div class="box compare">
+<div class="box-title">這個例子點出 on-policy 的關鍵</div>
+target 裡用的 $Q(s',a')=Q\big((4,3),\text{Right}\big)=0.9$，是「behavior policy 真的選出來的那個動作」，
+而不是 $(4,3)$ 狀態下最大的 $Q$ 值（$\text{Left}=1.0$）。也就是說，<b>SARSA 學到的是「連探索動作都考慮進去」
+的策略價值</b>——如果 agent 常常在懸崖邊探索，SARSA 會把探索的風險學進 $Q$ 值裡，因此往往比 Q-learning
+更保守。這正是下一節 Q-learning 範例要對比的地方。
+</div>
+
+<h3 id="s3-5">3.5 Q-learning：Off-Policy TD Control</h3>
+<div class="box">
+<div class="box-title">Q-learning 更新規則</div>
+$$Q(s,a)\leftarrow Q(s,a)+\alpha\Big(r+\gamma\max_{a'}Q(s',a')-Q(s,a)\Big)$$
+<p class="note">選動作用 ε-greedy（負責探索），但計算 target 時對 $s'$ 用<b>貪婪（greedy）</b>策略取
+$\max_{a'}$——behavior policy 與 target policy 不同，因此稱為 <b>off-policy</b>。
+這一行式子與 1.4 節的 Bellman 最適方程 $Q^{*}(s,a)=\mathbb{E}[r+\gamma\max_{a'}Q^{*}(s',a')]$
+幾乎一模一樣，差別只在於用「取樣 + bootstrapping」取代「已知模型的期望」。</p>
+</div>
+
+<h4>演算範例：同一個 FrozenLake，換成 Q-learning 更新</h4>
+<p>
+沿用同一張 4×4 地圖與同樣的 $\alpha=0.1,\gamma=1$，這次示範狀態 $(3,2)\to(4,2)$ 這一步。
+</p>
+
+<div style="display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; margin:18px 0;">
+<svg viewBox="0 0 280 280" width="230" height="230" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+  <defs>
+  <pattern id="hole-hatch-ql" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#e7b8b0" stroke-width="2"/></pattern>
+  <marker id="arrowhead-ql" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="#c2410c"/></marker>
+  </defs>
+  <text x="60" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">1</text>
+  <text x="120" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">2</text>
+  <text x="180" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">3</text>
+  <text x="240" y="22" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">4</text>
+  <text x="18" y="64" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">1</text>
+  <text x="18" y="124" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">2</text>
+  <text x="18" y="184" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">3</text>
+  <text x="18" y="244" font-size="12" font-family="Noto Sans TC,sans-serif" text-anchor="middle" fill="#4b5563">4</text>
+  <rect x="30" y="30" width="60" height="60" fill="#eef3fb" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1c4e9c">S</text>
+  <rect x="90" y="30" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="150" y="30" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="30" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="66" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="30" y="90" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="90" y="90" width="60" height="60" fill="url(#hole-hatch-ql)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="150" y="90" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="90" width="60" height="60" fill="url(#hole-hatch-ql)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="126" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="30" y="150" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="90" y="150" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="150" y="150" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="150" width="60" height="60" fill="url(#hole-hatch-ql)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="186" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="30" y="210" width="60" height="60" fill="url(#hole-hatch-ql)" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="60" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">H</text>
+  <rect x="90" y="210" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="120" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="150" y="210" width="60" height="60" fill="#ffffff" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="180" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#1b1f24">F</text>
+  <rect x="210" y="210" width="60" height="60" fill="#e6f7ee" stroke="#1b1f24" stroke-width="1.5"/>
+  <text x="240" y="246" font-size="18" font-family="Georgia,serif" text-anchor="middle" fill="#0f766e">G</text>
+  <line x1="120" y1="194" x2="120" y2="254" stroke="#c2410c" stroke-width="2" marker-end="url(#arrowhead-ql)"/>
+  <circle cx="120" cy="194" r="6" fill="#c2410c"/>
+  <circle cx="120" cy="254" r="6" fill="none" stroke="#c2410c" stroke-width="2"/>
+  </svg>
+<div style="flex:1; min-width:260px;">
+<p class="note">目前 Q table 中與本例相關的幾列：</p>
+<table style="font-size:13.6px;">
+<tr><th>State</th><th>Action</th><th>$Q$</th></tr>
+<tr><td>(3,2)</td><td>Up</td><td>0.1</td></tr>
+<tr><td style="border-top:2px solid var(--accent);">(3,2)</td><td style="border-top:2px solid var(--accent);"><b>Down</b></td><td style="border-top:2px solid var(--accent);"><b>0.8 ← 目前最大</b></td></tr>
+<tr><td>(3,2)</td><td>Left</td><td>0.5</td></tr>
+<tr><td>(3,2)</td><td>Right</td><td>0.6</td></tr>
+<tr><td>(4,2)</td><td>Up</td><td>0.3</td></tr>
+<tr><td>(4,2)</td><td>Down</td><td>0.5</td></tr>
+<tr><td>(4,2)</td><td>Left</td><td>0.1</td></tr>
+<tr><td style="border-top:2px solid var(--accent);">(4,2)</td><td style="border-top:2px solid var(--accent);"><b>Right</b></td><td style="border-top:2px solid var(--accent);"><b>0.8 ← 全域最大</b></td></tr>
+</table>
+</div>
+</div>
+
+<div class="step">
+<ol>
+<li>在狀態 $(3,2)$，以機率 $1-\epsilon$ 選擇 Q 值最大的動作 $\Rightarrow$ 選 <b>Down</b>（$Q=0.8$），
+移動到下一狀態 $(4,2)$，得到獎勵 $r=0$。</li>
+<li>Q-learning 計算 target 時<b>不管 behavior policy 接下來實際會選哪個動作</b>，一律對 $(4,2)$
+取貪婪的 $\max_{a'}Q\big((4,2),a'\big)$。比較 Up$=0.3$、Down$=0.5$、Left$=0.1$、Right$=0.8$
+$\Rightarrow$ 最大值來自 <b>Right</b>，$\max_{a'}Q\big((4,2),a'\big)=0.8$。</li>
+<li>代入 Q-learning 更新規則 $Q(s,a)\leftarrow Q(s,a)+\alpha\big(r+\gamma\max_{a'}Q(s',a')-Q(s,a)\big)$：
+$$Q\big((3,2),\text{Down}\big)=0.8+0.1\big(0+1\times0.8-0.8\big)=0.8+0.1(0)=\mathbf{0.8}$$</li>
+</ol>
+</div>
+<div class="box compare">
+<div class="box-title">為什麼這次更新後數值「沒有變」？</div>
+$Q\big((3,2),\text{Down}\big)$ 更新前後都是 $0.8$，因為 TD error
+$r+\gamma\max_{a'}Q(s',a')-Q(s,a)=0+0.8-0.8=0$——這剛好代表
+$(3,2),\text{Down}\big)$ 這個估計已經和它的 bootstrap 目標一致，暫時達到局部平衡，
+不是計算錯誤。對照上一節 SARSA 範例：SARSA 的 target 用的是「探索到的 Right（$Q{=}0.9$）」，
+而這裡 Q-learning 的 target 永遠鎖定「$(4,2)$ 狀態的最大值（Right，$Q{=}0.8$）」——
+<b>同一張地圖、同一組初始 Q 值，兩種演算法在 target 的選法上就已經分道揚鑣</b>，
+這就是 on-policy／off-policy 在數學式子上的具體差異，也是它們最終學到的策略保守程度不同的根源。
+</div>
+
+<div class="box compare">
+<div class="box-title">SARSA vs Q-learning</div>
+<table>
+<tr><th></th><th>SARSA</th><th>Q-learning</th></tr>
+<tr><td>Badge</td><td><span class="badge on-policy">ON-POLICY</span></td><td><span class="badge off-policy">OFF-POLICY</span></td></tr>
+<tr><td>Target 中的下一動作 $a'$</td><td>由 ε-greedy 實際採樣得到</td><td>由 $\arg\max_{a'}Q(s',a')$ 選出（greedy）</td></tr>
+<tr><td>行為特性</td><td>較保守（考慮探索帶來的風險）</td><td>較激進（直接學最優策略）</td></tr>
+</table>
+<p class="note">這個 on-policy／off-policy 的分野會在 Part IV（DQN 是 off-policy）、
+Part VI（A2C 是 on-policy）、Part VII（DDPG/TD3/SAC 是 off-policy）反覆決定演算法的資料使用效率與穩定性。</p>
+</div>
+
+<h3 id="s3-6">3.6 DP / MC / TD 總比較</h3>
+<table>
+<tr><th></th><th>Dynamic Programming</th><th>Monte Carlo</th><th>Temporal-Difference</th></tr>
+<tr><td>需要環境模型？</td><td><span class="badge model-based">Model-Based</span></td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge model-free">Model-Free</span></td></tr>
+<tr><td>是否 bootstrap？</td><td>是（用 $V(s')$ 估計 $V(s)$）</td><td>否（用完整回報）</td><td>是</td></tr>
+<tr><td>可否用於連續任務？</td><td>可</td><td>不可（需等 episode 結束）</td><td>可</td></tr>
+<tr><td>更新時機</td><td>每輪掃過所有狀態</td><td>episode 結束後</td><td>每個 time step</td></tr>
+</table>
+<p class="note">記住這張表——Part VI 會指出：REINFORCE-with-Baseline 的更新時機就像 MC（等 episode 結束），
+Actor-Critic 的更新時機就像 TD（每步更新），這就是兩者最根本的差異來源。</p>
+</section>
+
+
+<section id="part4">
+<h1 class="part">PART IV</h1>
+<h2>價值函數逼近：Deep Q-Network 與其變體</h2>
+
+<h3 id="s4-1">4.1 為何需要函數逼近</h3>
+<p>
+若狀態數 1,000、動作數 50，Q table 就有 50,000 列，狀態空間一大（例如影像輸入）table-based 方法完全不可行。
+解法：<b>用一個由參數 $\theta$ 決定的函數逼近器（神經網路）$Q_\theta(s,a)$ 取代查表</b>，
+輸入狀態 $s$，輸出所有動作的 Q 值，這就是 DQN。這一步等同於「把 Part III 的表格版 Q-learning，
+換成神經網路版」——更新規則完全繼承 Bellman 最適方程 $(\star)$。
+</p>
+
+<h3 id="s4-2">4.2 DQN：Replay Buffer 與 Target Network</h3>
+<div class="box derive">
+<div class="box-title">推導：從 Bellman 最適方程到 DQN 的 MSE loss</div>
+<p>目標：讓網路預測值逼近 Bellman 最適方程右側（用 K 個取樣轉移取平均來近似期望）：</p>
+$$y_i = r_i+\gamma\max_{a'}Q_\theta(s_i',a')
+\qquad\Longrightarrow\qquad
+L(\theta)=\frac{1}{K}\sum_{i=1}^{K}\big(y_i-Q_\theta(s_i,a_i)\big)^2$$
+<p><b>問題：</b>target $y_i$ 與 prediction $Q_\theta(s_i,a_i)$ 用<b>同一組參數</b> $\theta$ 計算，
+target 會隨著每次梯度更新跟著跑，導致訓練不穩定（類似「射自己移動中的靶」）。</p>
+<p><b>解法：</b>引入獨立、暫時凍結的 <b>target network</b>（參數 $\theta'$）只負責算 target，
+主網路照常用梯度下降學習，$\theta'$ 每隔一段時間才拷貝／軟更新自 $\theta$：</p>
+$$L(\theta)=\frac{1}{K}\sum_{i=1}^{K}\Big(r_i+\gamma\max_{a'}Q_{\theta'}(s_i',a')-Q_\theta(s_i,a_i)\Big)^2$$
+</div>
+<p>
+另一個問題：連續採樣的轉移 $(s,a,r,s')$ 高度相關（連續 frame 幾乎一樣），直接拿來訓練會 overfit。
+解法：把所有轉移存進 <b>Replay Buffer</b> $\mathcal D$，訓練時隨機取一個 minibatch，打破時間相關性。
+</p>
+
+<h3 id="s4-3">4.3 Double DQN：修正 Q 值高估</h3>
+<p>
+$\max$ 運算子本身會系統性高估 Q 值（雜訊的最大值期望大於期望的最大值）。Double DQN 把
+「選動作」與「算 Q 值」拆給兩個不同網路：
+</p>
+<div class="box">
+<div class="box-title">Double DQN target</div>
+$$y=r+\gamma\, Q_{\theta'}\big(s',\;\arg\max_{a'} Q_\theta(s',a')\big)$$
+<p class="note">用主網路 $\theta$ 選出「它認為最好」的動作，但用 target network $\theta'$ 算這個動作的 Q 值，
+兩個估計互相制衡，降低高估偏誤。</p>
+</div>
+
+<h3 id="s4-4">4.4 Prioritized Experience Replay</h3>
+<p>並非所有轉移對學習的貢獻相等；TD 誤差 $\delta=r+\gamma\max_{a'}Q_{\theta'}(s',a')-Q_\theta(s,a)$ 大，
+代表這筆資料「預測得還很不準」，值得多學。</p>
+<div class="box">
+<div class="box-title">優先度與取樣機率</div>
+$$p_i=|\delta_i|+\epsilon\quad(\text{比例優先})\qquad\text{或}\qquad p_i=\frac{1}{\text{Rank}(i)}\quad(\text{排序優先})$$
+$$P(i)=\frac{p_i^{\alpha}}{\sum_k p_k^{\alpha}}$$
+<p class="note">$\epsilon$ 保證零誤差的轉移仍有被抽到的機會；$\alpha$ 控制優先度的強度
+（$\alpha=0$ 退化為均勻隨機抽樣，$\alpha=1$ 完全依優先度抽樣）。</p>
+</div>
+
+<h3 id="s4-5">4.5 Dueling DQN：Advantage Function 首次登場（承接 Part V／VI 的伏筆）</h3>
+<div class="box key">
+<div class="box-title">Advantage Function 定義 —— 之後 A2C 的「A」就是它</div>
+$$A(s,a)=Q(s,a)-V(s)$$
+<p>直覺：$Q(s,a)$ 是「在 $s$ 執行 $a$」的絕對好壞，$V(s)$ 是「在 $s$ 依平均而言」的好壞，
+兩者相減即「這個動作比平均水準好多少」。</p>
+</div>
+<p>
+Dueling DQN 把網路拆成兩條分支：$V(s;\theta,\beta)$（value stream）與 $A(s,a;\theta,\alpha)$（advantage stream），
+再合併：
+$$Q(s,a;\theta,\alpha,\beta)=V(s;\theta,\beta)+\Big(A(s,a;\theta,\alpha)-\frac{1}{|\mathcal A|}\sum_{a'}A(s,a';\theta,\alpha)\Big)$$
+減去平均 advantage 是為了解決 identifiability 問題（否則 $V$ 與 $A$ 可以互相加減任意常數而不改變 $Q$，
+無法被唯一決定）。<b>此處的 $V(s)$ 分支，其實就是 Part V 要講的「baseline / value network」的原型——
+一個網路同時輸出「這個狀態多好（$V$）」與「這個動作相對多好（$A$）」的想法，會在 A2C 中以更乾淨的形式重現。</b>
+</p>
+
+<h3 id="s4-6">4.6 DRQN：處理 POMDP</h3>
+<p>
+真實環境常常只能觀察到部分狀態（Partially Observable MDP）。DRQN 在 CNN 之後接上 LSTM，
+用隱藏狀態 $h_t$ 保留過去觀測的記憶，讓 Q 值的估計能利用歷史資訊，而不僅僅依賴當下這一幀畫面。
+</p>
+</section>
+
+
+<section id="part5">
+<h1 class="part">PART V</h1>
+<h2>Policy-Based 方法：Policy Gradient</h2>
+
+<h3 id="s5-1">5.1 為何需要 Policy-Based 方法</h3>
+<p>
+Value-based 方法（DQN 系列）有兩個結構性限制：<b>(1)</b> 決策規則是 $\arg\max_a Q(s,a)$，
+只能處理離散動作空間，動作連續時無法窮舉；<b>(2)</b> 探索需要額外掛上 ε-greedy，是「事後補丁」而非
+內建機制。Policy-based 方法直接用一個參數化網路 $\pi_\theta(a|s)$ 輸出動作的機率分布（隨機策略），
+不需要 Q function 中介，天生支援連續動作，也用「機率分布」內建了探索。
+</p>
+
+<h3 id="s5-2">5.2 目標函數與 Policy Gradient 定理</h3>
+<div class="box key">
+<div class="box-title">目標：最大化期望回報</div>
+$$J(\theta)=\mathbb{E}_{\tau\sim\pi_\theta(\tau)}\big[R(\tau)\big]=\int \pi_\theta(\tau)R(\tau)\,d\tau$$
+</div>
+<div class="box derive">
+<div class="box-title">推導：Log-Derivative Trick → Policy Gradient</div>
+<p>對 $\theta$ 直接微分並利用恆等式 $\nabla_\theta \log x=\dfrac{\nabla_\theta x}{x}$：</p>
+$$\nabla_\theta J(\theta)=\int \nabla_\theta \pi_\theta(\tau)R(\tau)\,d\tau
+=\int \pi_\theta(\tau)\,\frac{\nabla_\theta \pi_\theta(\tau)}{\pi_\theta(\tau)}\,R(\tau)\,d\tau
+=\int \pi_\theta(\tau)\,\nabla_\theta\log\pi_\theta(\tau)\,R(\tau)\,d\tau$$
+$$=\mathbb{E}_{\tau\sim\pi_\theta(\tau)}\big[\nabla_\theta\log\pi_\theta(\tau)\,R(\tau)\big]$$
+<p>把軌跡機率展開為 $\pi_\theta(\tau)=p(s_0)\prod_{t=0}^{T-1}\pi_\theta(a_t|s_t)\,p(s_{t+1}|s_t,a_t)$
+並取對數，取對 $\theta$ 的梯度時，轉移機率項 $p(s_{t+1}|s_t,a_t)$ 與 $\theta$ 無關而消失：</p>
+$$\nabla_\theta\log\pi_\theta(\tau)=\sum_{t=0}^{T-1}\nabla_\theta\log\pi_\theta(a_t|s_t)$$
+<p>代回，並用 N 條取樣軌跡以 Monte Carlo 近似期望，得到可實際計算的梯度估計：</p>
+$$\nabla_\theta J(\theta)\approx\frac{1}{N}\sum_{i=1}^{N}\left[\sum_{t=0}^{T-1}\nabla_\theta\log\pi_\theta(a_t|s_t)\,R(\tau)\right]$$
+</div>
+<p class="note">
+<b>妙處：轉移機率完全不出現在最終梯度式中——這正是 policy gradient 天生 model-free 的原因，
+不需要知道 $P(s'|s,a)$ 就能算梯度。</b>
+</p>
+
+<h3 id="s5-3">5.3 REINFORCE 演算法（Monte Carlo Policy Gradient）</h3>
+<div class="box">
+<div class="box-title">直覺：機率的「加權」</div>
+$$\theta\leftarrow\theta+\alpha\nabla_\theta\log\pi_\theta(a_t|s_t)\,R(\tau)$$
+<p>因為目標是<b>最大化</b> $J(\theta)$，這裡用<b>梯度上升</b>（gradient <i>ascent</i>），
+與 DQN 的梯度<b>下降</b>（minimize loss）方向相反，是 value-based 與 policy-based 最直觀的符號差異。</p>
+<ul>
+<li>若 $R(\tau)>0$：梯度方向讓 $\log\pi_\theta(a_t|s_t)$ 增大 → 提高該軌跡所有動作的機率。</li>
+<li>若 $R(\tau)<0$：反向更新 → 降低該軌跡所有動作的機率。</li>
+</ul>
+</div>
+<div class="step">
+<div class="box-title" style="color:var(--accent)">REINFORCE 演算法</div>
+<ol>
+<li>隨機初始化網路參數 $\theta$。</li>
+<li>依 $\pi_\theta$ 產生 $N$ 條軌跡 $\{\tau^i\}_{i=1}^N$（完整跑完 episode，本質上是「用 policy network 做 MC 取樣」）。</li>
+<li>計算每條軌跡的回報 $R(\tau)$。</li>
+<li>計算梯度 $\nabla_\theta J(\theta)=\frac{1}{N}\sum_i\sum_t \nabla_\theta\log\pi_\theta(a_t|s_t)R(\tau)$。</li>
+<li>梯度上升更新 $\theta\leftarrow\theta+\alpha\nabla_\theta J(\theta)$。</li>
+<li>重複 2–5 直到收斂。</li>
+</ol>
+</div>
+
+<h3 id="s5-4">5.4 Reward-to-go：修正一個因果謬誤</h3>
+<p>
+上式用<b>整條軌跡的總回報 $R(\tau)$</b> 加權每一步的梯度——但時間點 $t$ 的動作不可能影響
+$t$ 之前已經發生的獎勵。把加權項改成「從 $t$ 開始累積」的 reward-to-go $R_t$，
+在不改變期望值的前提下降低了不必要的變異數：
+$$\nabla_\theta J(\theta)=\frac{1}{N}\sum_{i=1}^{N}\left[\sum_{t=0}^{T-1}\nabla_\theta\log\pi_\theta(a_t|s_t)\,R_t\right],
+\qquad R_t=\sum_{t'=t}^{T-1} r(s_{t'},a_{t'})$$
+</p>
+
+<h3 id="s5-5">5.5 高變異數問題：為什麼需要 Baseline</h3>
+<p>
+REINFORCE 屬於 <b>on-policy</b> 方法：每一輪都用「目前這個策略」重新採樣，且必須採樣完整 episode
+才能拿到 $R_t$。策略每次更新後行為都在變，導致不同 batch 之間的回報差異極大，
+<b>梯度估計的變異數非常高，收斂又慢又不穩定。</b>
+</p>
+<div class="box derive">
+<div class="box-title">推導：Baseline 為什麼不會引入偏誤</div>
+<p>對任意「不依賴 $\theta$」的函數 $b(s_t)$，都有 $\mathbb{E}_{a_t\sim\pi_\theta}[\nabla_\theta\log\pi_\theta(a_t|s_t)\,b(s_t)]=0$
+（因為機率分布對其自身的積分為 1，對 $\theta$ 微分後恆為 0）。因此在梯度式中減去 $b(s_t)$：</p>
+$$\nabla_\theta J(\theta)\approx\frac{1}{N}\sum_{i=1}^N\left[\sum_{t=0}^{T-1}\nabla_\theta\log\pi_\theta(a_t|s_t)\,(R_t-b(s_t))\right]$$
+<p><b>期望值完全不變（unbiased），但只要 $b(s_t)$ 選得好，變異數會大幅下降。</b>
+最常見的選擇就是把 $b$ 設為該狀態的期望回報，也就是 <b>value function：$b(s_t)=V(s_t)$</b>。</p>
+</div>
+
+<h3 id="s5-6">5.6 Baseline 演化為 Value Network —— Part VI 的伏筆正式接上</h3>
+<div class="box key">
+<div class="box-title">承先啟後：這一步是全書邏輯鏈最重要的關節</div>
+<p>Value function $V(s)$ 事先未知，我們用<b>另一個獨立的神經網路</b> $V_\phi(s)$ 去逼近它
+（正如 Part IV 用神經網路逼近 $Q$）。訓練方式仍是最小化 MSE，把「實際觀察到的 reward-to-go $R_t$」
+當作 regression 的標籤：</p>
+$$J(\phi)=\frac{1}{N}\sum_{i=1}^N\sum_{t=0}^{T-1}\big(R_t-V_\phi(s_t)\big)^2
+\qquad\Longrightarrow\qquad \phi\leftarrow\phi-\alpha\nabla_\phi J(\phi)$$
+<p>於是我們手上有<b>兩個網路</b>：</p>
+<table style="margin-top:6px;">
+<tr><th>網路</th><th>參數</th><th>角色</th><th>更新方式</th></tr>
+<tr><td>Policy Network</td><td>$\theta$</td><td>決定動作分布（後稱 Actor）</td><td>梯度<b>上升</b>：$\theta\leftarrow\theta+\alpha\nabla_\theta J(\theta)$</td></tr>
+<tr><td>Value Network</td><td>$\phi$</td><td>估計 $V(s)$，當 baseline（後稱 Critic）</td><td>梯度<b>下降</b>：$\phi\leftarrow\phi-\alpha\nabla_\phi J(\phi)$</td></tr>
+</table>
+<p style="margin-top:10px;">
+$$\nabla_\theta J(\theta)\approx\frac{1}{N}\sum_{i=1}^{N}\left[\sum_{t=0}^{T-1}\nabla_\theta\log\pi_\theta(a_t|s_t)\,\big(R_t-V_\phi(s_t)\big)\right]$$
+這個方法叫做 <b>REINFORCE with Baseline</b>——它「長得」已經很像 Actor-Critic，
+但注意：$R_t$ 仍然是<b>整條軌跡跑完之後</b>算出來的完整（或 reward-to-go）回報，
+更新仍在 episode 結束後才發生。<b>它在更新時機上仍然是 Monte Carlo 精神。</b>
+Part VI 要做的最後一步，就是把 $R_t$ 換成 TD 的 bootstrap 估計，讓更新變成「每一步都能做」。
+</p>
+</div>
+</section>
+
+
+<section id="part6">
+<h1 class="part">PART VI</h1>
+<h2>Actor-Critic 方法：A2C 與 A3C</h2>
+
+<h3 id="s6-1">6.1 從 REINFORCE-with-Baseline 到 Actor-Critic：把 MC 換成 TD</h3>
+<p>
+回顧 Part III 的洞見：MC 要等 episode 結束、變異數高但無偏；TD 用 bootstrapping、可以線上更新、
+有偏但變異數低。<b>Actor-Critic 正是把 REINFORCE-with-Baseline 中的 $R_t$（MC 回報）換成
+TD target $r+\gamma V_\phi(s_{t+1})$</b>：
+</p>
+<div class="box compare">
+<div class="box-title">REINFORCE-with-Baseline vs Actor-Critic：一行式子的差異</div>
+$$\text{REINFORCE+Baseline（像 MC）}\qquad \nabla_\theta J(\theta)=\nabla_\theta\log\pi_\theta(a_t|s_t)\,\big(\underbrace{R_t}_{\text{完整回報，等 episode 結束}}-V_\phi(s_t)\big)$$
+$$\text{Actor-Critic（像 TD）}\qquad\quad \nabla_\theta J(\theta)=\nabla_\theta\log\pi_\theta(a_t|s_t)\,\big(\underbrace{r+\gamma V_\phi(s_{t}')}_{\text{TD target，每步可算}}-V_\phi(s_t)\big)$$
+<p class="note">兩者都在做「baseline 修正」，差別只在於「用什麼估計未來報酬」——
+這正是 Part III 表格中 MC vs TD 那條分界線，在 policy-based 世界裡的重現。</p>
+</div>
+<div class="flow">
+  <div class="node">Actor<br>= Policy Network $\pi_\theta$</div>
+  <div class="arrow">↔ policy</div>
+  <div class="node">Critic<br>= Value Network $V_\phi$</div>
+</div>
+<p>
+Actor 負責「找出最優策略」（延續 Part V 的 policy gradient）；Critic 負責「評估 Actor 產出的策略好不好」，
+並提供 TD error 作為回饋訊號——這訊號同時扮演「baseline」與「advantage 估計」兩個角色。
+</p>
+
+<h3 id="s6-2">6.2 Advantage Actor-Critic（A2C）：TD error 就是 Advantage 的無偏估計</h3>
+<div class="box derive">
+<div class="box-title">推導：為什麼 TD error 恰好近似 Advantage Function</div>
+<p>回顧 4.5 節定義 $A(s,a)=Q(s,a)-V(s)$。用單步 bootstrap 近似 $Q(s,a)\approx r+\gamma V(s')$，代入：</p>
+$$A(s,a)\approx \big(r+\gamma V(s')\big)-V(s)=\delta_{\text{TD}}$$
+<p>所以 A2C 的 policy gradient 可以寫成「用 Advantage 加權 log-probability」：</p>
+$$\nabla_\theta J(\theta)=\nabla_\theta\log\pi_\theta(a_t|s_t)\,A(s_t,a_t),
+\qquad A(s_t,a_t)=r+\gamma V_\phi(s_t')-V_\phi(s_t)$$
+</div>
+<p>
+直覺：Advantage 告訴我們「這個動作比這個狀態的平均水準好多少」——<b>比起用原始回報加權
+（哪個動作都往上或往下推），用 Advantage 加權更精準：只有真正優於平均的動作才會被鼓勵，
+這正是「A2C」名稱中 Advantage 的來由，也呼應了 Part IV 的 Dueling DQN 早已引入的同一個概念。</b>
+</p>
+
+<h3 id="s6-3">6.3 Asynchronous Advantage Actor-Critic（A3C）</h3>
+<p>
+On-policy 方法的樣本利用率低（每次更新完策略，舊資料就過時了），A3C 的解法是<b>平行化</b>：
+多個 worker（各自帶一份網路副本）同時在各自的環境副本中互動，各自獨立計算梯度，
+非同步地把梯度傳回一個 global network；global network 更新完再定期把新參數傳回給各 worker。
+這種平行採樣本身也讓不同 worker 的軌跡彼此去相關（decorrelated），達到類似 Replay Buffer 的效果，
+但不需要額外的記憶體。
+</p>
+<div class="box">
+<div class="box-title">A3C 的 Actor Loss（加入 entropy 正則化）</div>
+$$J(\theta)=\log\pi_\theta(a_t|s_t)\big(r+\gamma V_\phi(s_t')-V_\phi(s_t)\big)+\beta H(\pi(s_t))$$
+<p class="note">熵項 $H(\pi(s))=-\sum_a \pi(a|s)\log\pi(a|s)$ 鼓勵策略維持一定隨機性、避免過早收斂到
+次優的確定性策略，是「探索」在 policy-based 方法中的內建機制之延伸。Critic loss 則就是 TD error 的均方：
+$L(\phi)=\big(r+\gamma V_\phi(s_t')-V_\phi(s_t)\big)^2$，與 4.2 節 DQN loss 同一血統。</p>
+</div>
+</section>
+
+
+<section id="part7">
+<h1 class="part">PART VII</h1>
+<h2>連續動作空間的 Actor-Critic：DDPG、TD3、SAC</h2>
+
+<h3 id="s7-1">7.1 連續動作空間的困境</h3>
+<p>
+A2C／A3C 中的 Actor 輸出動作機率分布（離散用 categorical，連續可以用 Gaussian 的 mean/variance），
+但 Critic 若走 DQN 路線、需要對 $s'$「窮舉所有 $a'$ 取 $\max$」，動作連續時根本無法計算。
+DDPG 的解法：讓 Actor 直接輸出「一個確定性動作」，Critic 則接受 $(s,a)$ 一起輸入，
+不需要再對動作取 max。
+</p>
+
+<h3 id="s7-2">7.2 DDPG：確定性 Actor + DQN 血統的 Critic</h3>
+<div class="box">
+<div class="box-title">確定性策略 vs 隨機策略</div>
+$$\text{確定性策略：}a=\mu_\phi(s)\qquad\text{（狀態 → 唯一動作，取代 } a\sim\pi_\theta(s)\text{）}$$
+<p class="note">確定性策略天生不探索，需要額外加噪聲：$a=\mu_\phi(s)+\mathcal N$
+（DDPG 用 Ornstein–Uhlenbeck process 產生時間相關噪聲，適合物理控制的慣性特性）。</p>
+</div>
+<div class="box derive">
+<div class="box-title">推導：Critic Loss —— 就是把 DQN 的 $\max_{a'}$ 換成 $\mu_{\phi'}(s')$</div>
+<p>DQN 的 target 為 $y=r+\gamma\max_{a'}Q_{\theta'}(s',a')$；動作連續時 $\max_{a'}$ 無法計算，
+改用 target actor 直接產生下一動作 $a'=\mu_{\phi'}(s')$：</p>
+$$y_i=r_i+\gamma\, Q_{\theta'}\big(s_i',\mu_{\phi'}(s_i')\big)
+\qquad\Longrightarrow\qquad
+L(\theta)=\frac{1}{K}\sum_i\big(y_i-Q_\theta(s_i,a_i)\big)^2,\quad a_i=\mu_\phi(s_i)$$
+</div>
+<div class="box derive">
+<div class="box-title">推導：Actor 目標函數 —— 讓 Critic 給的評分最大化</div>
+<p>連續動作下無法窮舉取 max，改用<b>梯度上升直接推高 Critic 對 Actor 產生動作的評分</b>：</p>
+$$J(\phi)=\frac{1}{K}\sum_i Q_\theta(s_i,a),\quad a=\mu_\phi(s_i)
+\qquad\Longrightarrow\qquad \phi\leftarrow\phi+\alpha\nabla_\phi J(\phi)$$
+<p class="note">這一步的精神其實是鏈式法則：$\nabla_\phi J = \nabla_a Q_\theta(s,a)\big|_{a=\mu_\phi(s)}\cdot\nabla_\phi\mu_\phi(s)$，
+即「критик 告訴 actor 應該往 Q 值變大的方向調整動作」——用可微的 Critic 直接反傳梯度到 Actor，
+是連續控制 actor-critic 的核心機制。</p>
+</div>
+<div class="box">
+<div class="box-title">Target 網路的軟更新（Soft Update）</div>
+$$\theta'\leftarrow \tau\theta+(1-\tau)\theta',\qquad \phi'\leftarrow \tau\phi+(1-\tau)\phi',\qquad \tau\ll1（常取 0.001）$$
+<p class="note">相較 DQN 「隔一段時間整批複製」的硬更新，DDPG 用小步長的軟更新讓 target 更平滑地追蹤主網路，
+進一步穩定訓練。DDPG 因此共使用<b>四個網路</b>：main actor $\phi$、target actor $\phi'$、main critic $\theta$、target critic $\theta'$。</p>
+</div>
+<div class="step">
+<div class="box-title" style="color:var(--accent)">DDPG 演算法</div>
+<ol>
+<li>初始化 main critic $\theta$、main actor $\phi$；並複製一份成 target critic $\theta'$、target actor $\phi'$；初始化 replay buffer $\mathcal D$。</li>
+<li>每個 episode：初始化 OU 噪聲程序 $\mathcal N$。</li>
+<li>每個 time step：以 $a=\mu_\phi(s)+\mathcal N$ 選動作，執行後把 $(s,a,r,s')$ 存入 $\mathcal D$。</li>
+<li>從 $\mathcal D$ 隨機取樣 $K$ 個轉移，計算 $y_i=r_i+\gamma Q_{\theta'}(s_i',\mu_{\phi'}(s_i'))$。</li>
+<li>最小化 critic loss $L(\theta)$ 更新 $\theta$；最大化 $J(\phi)$ 更新 $\phi$。</li>
+<li>對 $\theta',\phi'$ 做軟更新。</li>
+</ol>
+</div>
+
+<h3 id="s7-3">7.3 TD3：三個修正 DDPG 過度樂觀的技巧</h3>
+<p>DDPG 繼承了 DQN 的 $\max$ 高估問題，且對超參數極敏感。TD3（Twin Delayed DDPG）提出三項修正：</p>
+<table>
+<tr><th>技巧</th><th>做法</th><th>對應血統</th></tr>
+<tr><td>Twin Critic（雙 Q 網路）</td><td>訓練兩個獨立 Critic $Q_{\theta_1},Q_{\theta_2}$，target 取
+$y=r+\gamma\min_{i=1,2}Q_{\theta_i'}(s',\tilde a')$，取小者抑制高估</td><td>類比 Double DQN 的修正思路（4.3 節）</td></tr>
+<tr><td>Delayed Policy Update</td><td>Critic 每更新多次，Actor 才更新一次，讓評分標準先穩定下來再調整策略</td><td>穩定 Actor-Critic 交替優化的收斂性</td></tr>
+<tr><td>Target Policy Smoothing</td><td>算 target 時對 target actor 的動作加入截斷噪聲 $\tilde a'=\mu_{\phi'}(s')+\text{clip}(\epsilon,-c,c)$，
+避免 Critic 在動作空間中出現尖銳的錯誤高峰值</td><td>正則化 Bellman target，類比 A3C 的 entropy 正則化精神</td></tr>
+</table>
+
+<h3 id="s7-4">7.4 SAC：最大熵強化學習</h3>
+<p>
+SAC（Soft Actor-Critic）在目標函數中加入策略熵，鼓勵在達成高回報的同時保持策略的隨機性／多樣性：
+$$J(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}\Big[\sum_t \gamma^t\big(r_t+\alpha_{\text{temp}}H(\pi_\theta(\cdot|s_t))\big)\Big]$$
+與 A3C 用 entropy 當「附加正則項」不同，SAC 把 entropy <b>直接寫進報酬定義本身</b>（soft value function），
+因此天生鼓勵探索、對超參數更 robust，是目前連續控制中最常用的 off-policy 演算法之一。
+$\alpha_{\text{temp}}$（temperature）可設為固定值，也可以像 TD3 的雙 Critic 一樣自動調整。
+</p>
+</section>
+
+
+<section id="part8">
+<h1 class="part">PART VIII</h1>
+<h2>Trust Region 與 PPO：讓 Policy Gradient 的步伐可控</h2>
+
+<h3 id="s8-1">8.1 為何 Policy Gradient 步伐要「有界」</h3>
+<p>
+REINFORCE／A2C 用一般的梯度上升更新 $\theta$，學習率選得稍大，一次更新就可能讓策略「跳」到一個
+明顯更差的區域——因為策略一變，用來估計梯度的舊資料立刻失效（策略決定了資料分布本身），
+與監督式學習「資料分布固定」的假設完全不同。這是 on-policy policy gradient 訓練不穩定的根源，
+也是 TRPO / PPO 想解決的核心問題：<b>如何限制每次更新，使新策略不要偏離舊策略太遠？</b>
+</p>
+
+<h3 id="s8-2">8.2 Importance Sampling → Surrogate Objective</h3>
+<div class="box derive">
+<div class="box-title">推導：允許用「舊策略採樣的資料」評估「新策略的目標」</div>
+<p>設 $\pi_{\theta_{\text{old}}}$ 是採樣資料所用的舊策略，希望評估新策略 $\pi_\theta$ 的期望優勢。
+利用 importance sampling：</p>
+$$\mathbb{E}_{a\sim\pi_\theta}[A^{\pi_{\theta_{\text{old}}}}(s,a)]
+=\mathbb{E}_{a\sim\pi_{\theta_{\text{old}}}}\left[\frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)}A^{\pi_{\theta_{\text{old}}}}(s,a)\right]$$
+<p>定義機率比 $r_t(\theta)=\dfrac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$，得到 surrogate objective：</p>
+$$L^{\text{CPI}}(\theta)=\mathbb{E}_t\big[r_t(\theta)\,A_t\big]$$
+<p class="note">這使我們能重複利用同一批（舊策略採樣的）資料進行多次梯度更新，大幅提升樣本效率——
+但代價是：若 $r_t(\theta)$ 偏離 1 太多（新舊策略差太多），這個近似就會失真。</p>
+</div>
+
+<h3 id="s8-3">8.3 TRPO 概念：用 KL 散度當硬約束</h3>
+<p>
+TRPO（Trust Region Policy Optimization）直接對 surrogate objective 加上 KL 散度約束：
+$$\max_\theta \;\mathbb{E}_t\big[r_t(\theta)A_t\big]\quad\text{s.t.}\quad \mathbb{E}_t\big[\mathrm{KL}(\pi_{\theta_{\text{old}}}(\cdot|s_t)\,\|\,\pi_\theta(\cdot|s_t))\big]\le\delta$$
+理論保證嚴謹（單調改善），但需要計算二階 Fisher information 矩陣、共軛梯度求解，實作複雜、計算成本高。
+</p>
+
+<h3 id="s8-4">8.4 PPO-Clip：用一個 clip 運算取代整個約束優化</h3>
+<div class="box key">
+<div class="box-title">PPO 的關鍵想法：把「硬約束」換成「目標函數裡的懲罰」</div>
+<p>與其解一個帶約束的優化問題，PPO 直接把機率比 $r_t(\theta)$ 限制在 $[1-\epsilon,1+\epsilon]$ 區間內，
+取「未截斷」與「截斷後」兩者中<b>較悲觀（較小）</b>的一個：</p>
+$$L^{\text{CLIP}}(\theta)=\mathbb{E}_t\Big[\min\big(r_t(\theta)A_t,\;\;\mathrm{clip}(r_t(\theta),1-\epsilon,1+\epsilon)A_t\big)\Big]$$
+</div>
+<div class="box derive">
+<div class="box-title">為什麼取 min 就能達到「抑制過大更新」的效果</div>
+<ul>
+<li>若 $A_t>0$（這個動作比平均好，我們想提高它的機率）：一旦 $r_t(\theta)>1+\epsilon$
+（新策略已經把機率推得比舊策略高出太多），clip 讓目標函數<b>不再繼續獎勵</b>更大的 $r_t$——
+梯度被截斷，更新自然停止，避免一步跨太遠。</li>
+<li>若 $A_t<0$（這個動作比平均差，我們想降低它的機率）：一旦 $r_t(\theta)<1-\epsilon$
+（機率已經被壓得夠低），同理不再繼續懲罰，避免把機率壓到不合理的極端。</li>
+<li>取 min 保證這個界線只在「朝著會讓目標變好的方向移動過頭」時生效，是一個下界（悲觀估計），
+不會意外地鼓勵不安全的更新。</li>
+</ul>
+</div>
+<p>
+$A_t$ 的計算延續 Part VI 的精神：可用單步 TD error，也常用 <b>Generalized Advantage Estimation (GAE)</b>
+把多步 TD error 做指數加權平均，在偏誤與變異數之間取得更細緻的平衡：
+$$\hat A_t^{\text{GAE}(\gamma,\lambda)}=\sum_{l=0}^{\infty}(\gamma\lambda)^l\,\delta_{t+l},\qquad
+\delta_t=r_t+\gamma V_\phi(s_{t+1})-V_\phi(s_t)$$
+$\lambda=0$ 退化為單步 TD（低變異數、高偏誤，如 A2C）；$\lambda=1$ 退化為 MC 式的完整回報估計
+（高變異數、低偏誤，如 REINFORCE）——GAE 讓我們能連續地在這條光譜上選點。
+</p>
+
+<h3 id="s8-5">8.5 PPO 完整演算法：Actor-Critic 家族的集大成</h3>
+<div class="step">
+<ol>
+<li>初始化 policy（actor）$\pi_\theta$ 與 value（critic）$V_\phi$。</li>
+<li>用目前策略 $\pi_{\theta_{\text{old}}}$ 與環境互動，蒐集一批（多條）軌跡 $(s_t,a_t,r_t)$。</li>
+<li>用 critic 計算 TD error / GAE，得到 advantage 估計 $\hat A_t$，以及 value target。</li>
+<li>對同一批資料，重複 $K$ 個 epoch，最大化 $L^{\text{CLIP}}(\theta)$（可再加上 entropy bonus）更新 actor $\theta$；
+最小化 $(V_\phi(s_t)-\text{target})^2$ 更新 critic $\phi$。</li>
+<li>用更新後的 $\theta$ 作為新的 $\theta_{\text{old}}$，回到步驟 2 蒐集新資料。</li>
+</ol>
+</div>
+<p class="note">
+PPO 之所以放在整份講義的最後，是因為它把前面所有主軸都收攏在一起：
+Critic（$V_\phi$）延續 Part V/VI 的 baseline／TD 血統；Advantage 延續 Part IV/VI 的定義；
+Actor 的更新延續 Part V 的 policy gradient 定理；importance sampling 與 clip
+則是為了解決「on-policy 方法樣本利用率低、更新步伐難控」這個從 Part III（on/off-policy 分野）
+就埋下的張力，是目前最常用、也最穩定的 on-policy actor-critic 演算法之一。
+</p>
+</section>
+
+
+<section id="part9">
+<h1 class="part">PART IX</h1>
+<h2>總結地圖</h2>
+
+<h3 id="s9-1">9.1 全家族族譜</h3>
+<div class="box key">
+<div class="box-title">兩條主線最終匯流</div>
+<p><b>Value-based 主線：</b>Bellman 方程 → DP（已知模型）→ MC（model-free，等回合結束）→
+TD/Q-learning（bootstrapping，每步更新）→ DQN（神經網路逼近 Q，加 replay buffer + target network）→
+Double DQN／PER／Dueling DQN（各自修正高估、樣本效率、V-A 分解）。</p>
+<p><b>Policy-based 主線：</b>Policy Gradient 定理 → REINFORCE（MC 式，高變異數）→
++Baseline（引入 Value Network 降變異數，但仍是 MC 更新時機）→ 把 baseline 的 target
+從 MC 回報換成 TD target → <b>Actor-Critic（A2C/A3C）誕生</b>。</p>
+<p><b>兩條主線在 Actor-Critic 交會後繼續演化：</b>Critic 借用 DQN 的 target network／Bellman
+bootstrapping 思路 → 應用到連續動作空間，Actor 改為確定性策略 → <b>DDPG</b> →
+修正高估與更新不穩定 → <b>TD3</b> → 引入最大熵目標 → <b>SAC</b>。
+另一支則專注於「如何讓 on-policy 的每次策略更新更穩健」→ TRPO 的 KL 約束 →
+簡化為 clip 機制 → <b>PPO</b>，把 Actor-Critic 結構重新與穩定性工程結合。</p>
+</div>
+
+<h3 id="s9-2">9.2 對照總表</h3>
+<table>
+<tr><th>演算法</th><th>Model</th><th>On/Off-Policy</th><th>動作空間</th><th>核心創新</th><th>直接繼承自</th></tr>
+<tr><td>Value Iteration / Policy Iteration</td><td><span class="badge model-based">Model-Based</span></td><td>—</td><td><span class="badge discrete">Discrete</span></td><td>已知模型下疊代求解 Bellman 方程</td><td>Bellman 最適方程</td></tr>
+<tr><td>Monte Carlo</td><td><span class="badge model-free">Model-Free</span></td><td>On/Off 皆可</td><td><span class="badge discrete">Discrete</span></td><td>用完整回報的樣本平均估計 $V,Q$</td><td>大數法則</td></tr>
+<tr><td>SARSA</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge on-policy">On-Policy</span></td><td><span class="badge discrete">Discrete</span></td><td>TD bootstrapping + 同策略選 $a'$</td><td>TD(0)</td></tr>
+<tr><td>Q-learning</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge off-policy">Off-Policy</span></td><td><span class="badge discrete">Discrete</span></td><td>target 用 $\max_{a'}$（greedy）</td><td>TD(0) + Bellman 最適方程</td></tr>
+<tr><td>DQN</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge off-policy">Off-Policy</span></td><td><span class="badge discrete">Discrete</span></td><td>神經網路逼近 Q + replay buffer + target network</td><td>Q-learning</td></tr>
+<tr><td>Double / Dueling / PER-DQN</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge off-policy">Off-Policy</span></td><td><span class="badge discrete">Discrete</span></td><td>修正高估 / V-A 分解 / 優先取樣</td><td>DQN</td></tr>
+<tr><td>REINFORCE</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge on-policy">On-Policy</span></td><td><span class="badge discrete">Discrete</span>/<span class="badge continuous">Continuous</span></td><td>Log-derivative trick 直接優化策略</td><td>Policy Gradient 定理</td></tr>
+<tr><td>REINFORCE + Baseline</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge on-policy">On-Policy</span></td><td><span class="badge discrete">Discrete</span>/<span class="badge continuous">Continuous</span></td><td>引入 Value Network 當 baseline 降變異數</td><td>REINFORCE</td></tr>
+<tr><td>A2C / A3C</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge on-policy">On-Policy</span></td><td><span class="badge discrete">Discrete</span>/<span class="badge continuous">Continuous</span></td><td>baseline target 換成 TD，逐步更新 + Advantage</td><td>REINFORCE+Baseline ＋ TD</td></tr>
+<tr><td>DDPG</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge off-policy">Off-Policy</span></td><td><span class="badge continuous">Continuous</span></td><td>確定性 actor + DQN 血統 critic</td><td>A-C 架構 ＋ DQN</td></tr>
+<tr><td>TD3</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge off-policy">Off-Policy</span></td><td><span class="badge continuous">Continuous</span></td><td>雙 critic、延遲更新、目標平滑</td><td>DDPG ＋ Double DQN 精神</td></tr>
+<tr><td>SAC</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge off-policy">Off-Policy</span></td><td><span class="badge continuous">Continuous</span></td><td>最大熵目標函數</td><td>DDPG/TD3</td></tr>
+<tr><td>TRPO / PPO</td><td><span class="badge model-free">Model-Free</span></td><td><span class="badge on-policy">On-Policy</span></td><td><span class="badge discrete">Discrete</span>/<span class="badge continuous">Continuous</span></td><td>Importance sampling + 信任域／clip 限制更新步伐</td><td>A2C ＋ Policy Gradient 定理</td></tr>
+</table>
+
+<div class="box compare">
+<div class="box-title">給學生的一句話總結</div>
+<p>
+「Q-learning 教我們怎麼用 Bellman 方程估計『這個動作值多少』；Policy Gradient 教我們怎麼直接
+優化『選這個動作的機率』。Actor-Critic 把兩者接在一起：Critic 繼承 Q-learning／TD 的血統去評分，
+Actor 繼承 Policy Gradient 的血統去決策。後續 DDPG／TD3／SAC／PPO 的所有故事，
+都只是在問同一個問題的不同面向——<b>怎麼讓 Critic 評分更準、讓 Actor 更新更穩。</b>」
+</p>
+</div>
+</section>
+
+<div class="footer">
+講義整理自：Bellman 方程、動態規劃、Monte Carlo / TD 學習、DQN 及其變體、Policy Gradient、
+Actor-Critic (A2C/A3C)、DDPG/TD3/SAC 課程投影片內容，並補充 PPO／TRPO／GAE 章節以完整銜接
+value-based 與 policy-based 兩條主線的演化邏輯。
+</div>
+
+</main>
+</div>
+</body>
+</html>
