@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D 級聯 PID 飛控模擬器 — CURIO Edition</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a14;color:#e2e8f0}
+
+/* ═══ Three-column layout ═══ */
+#app{display:grid;grid-template-columns:260px 1fr 280px;height:100vh;gap:0}
+
+/* ── Left: Telemetry / Margins / Bode ── */
+#left{background:#0d0d1b;border-right:1px solid #1e1e30;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+/* ── Centre: 3D + charts ── */
+#centre{display:flex;flex-direction:column;gap:6px;padding:6px;background:#080812;min-width:0;height:100vh;overflow:hidden}
+#main3d{flex:1;border-radius:10px;overflow:hidden;position:relative;border:1px solid #1e1e30;min-height:200px}
+#droneCanvas{width:100%;height:100%;display:block}
+#charts{display:grid;grid-template-columns:1fr 1fr;gap:6px;height:130px;flex-shrink:0}
+.chart-wrap{background:#0d0d1a;border-radius:8px;border:1px solid #1e1e30;overflow:hidden;position:relative}
+.chart-wrap canvas{width:100%;height:100%;display:block}
+.chart-lbl{position:absolute;top:4px;left:7px;font-size:10px;color:#374151;pointer-events:none;font-family:monospace}
+/* ── Right: Parameters ── */
+#right{background:#0d0d1b;border-left:1px solid #1e1e30;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:7px}
+
+/* ── Common ── */
+.sec{font-size:10px;font-weight:700;color:#90cdf4;letter-spacing:.8px;text-transform:uppercase;margin-top:4px}
+.sub{font-size:11px;color:#ecc94b;font-weight:600;margin:3px 0 1px}
+h1{font-size:13px;font-weight:700;color:#63b3ed;border-bottom:1px solid #1e1e30;padding-bottom:6px}
+#status{font-size:10px;font-weight:700;text-align:center;padding:5px;background:#0a0a14;border-radius:5px;color:#ed8936;border:1px solid #1e1e30}
+
+/* ── Margin dashboard ── */
+.mboard{background:#0a0a14;border:1px solid #1e1e30;border-radius:8px;padding:8px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px}
+.mcell{background:#111120;border-radius:5px;padding:5px 6px;text-align:center}
+.mcell .lb{font-size:9px;color:#374151;line-height:1.3}
+.mcell .vl{font-size:16px;font-family:'Courier New',monospace;font-weight:700;margin-top:1px}
+.advice{font-size:10px;line-height:1.5;text-align:center;padding:4px 0 0;color:#9ca3af}
+.safe{color:#48bb78}.warn{color:#ecc94b}.danger{color:#f56565}
+
+/* ── Telemetry ── */
+.telem{background:#0a0a14;border:1px solid #1e1e30;border-radius:8px;padding:8px;font-family:'Courier New',monospace;font-size:11px}
+.telem-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0;border-bottom:1px solid #111120}
+.telem-row:last-child{border-bottom:none}
+.telem-lbl{color:#374151;font-size:10px}
+.telem-val{font-weight:700;font-size:12px}
+
+/* ── Bode ── */
+.bode-wrap{background:#0a0a14;border:1px solid #1e1e30;border-radius:8px;padding:7px}
+#bodeCanvas{width:100%;display:block;border-radius:3px}
+#bode-info{font-size:10px;color:#374151;margin-top:3px;font-family:monospace;line-height:1.4}
+
+/* ── Right panel inputs ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ig{display:flex;flex-direction:column;gap:2px}
+.ig label{font-size:10px;color:#6b7280}
+input[type=number]{background:#0a0a14;border:1px solid #2d2d45;color:#e2e8f0;padding:3px 6px;border-radius:4px;font-size:11px;width:100%;transition:border-color .15s}
+input[type=number]:focus{outline:none;border-color:#3182ce}
+.slrow{display:grid;grid-template-columns:38px 1fr 38px;align-items:center;gap:4px;margin-bottom:2px}
+.slrow span:first-child{font-size:10px;color:#9ca3af}
+input[type=range]{width:100%;accent-color:#3182ce;cursor:pointer}
+.sv{font-size:10px;font-family:'Courier New',monospace;color:#48bb78;text-align:right}
+.twocol{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* ── Buttons ── */
+.btn{border:none;padding:6px 10px;border-radius:6px;font-weight:700;cursor:pointer;font-size:11px;width:100%;transition:filter .15s,transform .1s;margin-top:2px}
+.btn:hover{filter:brightness(1.2)}
+.btn:active{transform:scale(0.97)}
+.b-blue{background:#2b6cb0;color:#fff}
+.b-red{background:#c53030;color:#fff}
+.b-green{background:#276749;color:#fff}
+.b-amber{background:#975a16;color:#fff}
+
+/* ── Scrollbars ── */
+#left::-webkit-scrollbar,#right::-webkit-scrollbar{width:4px}
+#left::-webkit-scrollbar-thumb,#right::-webkit-scrollbar-thumb{background:#1e1e30;border-radius:2px}
+
+/* ── Freq ratio badge ── */
+.freq-badge{font-size:9px;color:#48bb78;font-family:monospace;text-align:right;margin-top:-3px}
+
+/* ── Target angle sliders ── */
+.tgt-box{background:#0a0a14;border:1px solid #1e1e30;border-radius:7px;padding:7px 8px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ═══════════ LEFT: Telemetry + Margins + Bode ═══════════ -->
+<div id="left">
+  <h1>📊 分析儀表板</h1>
+  <div id="status">⏳ 載入 Pyodide…</div>
+
+  <!-- Live telemetry -->
+  <div class="sec">姿態即時數據</div>
+  <div class="telem">
+    <div class="telem-row"><span class="telem-lbl">Roll 實際</span><span class="telem-val safe" id="tl_r_act">0.0°</span></div>
+    <div class="telem-row"><span class="telem-lbl">Roll 目標</span><span class="telem-val" style="color:#63b3ed" id="tl_r_tgt">0.0°</span></div>
+    <div class="telem-row"><span class="telem-lbl">Roll 角速度</span><span class="telem-val" style="color:#a0aec0" id="tl_rr">0.0 °/s</span></div>
+    <div class="telem-row"><span class="telem-lbl">Pitch 實際</span><span class="telem-val safe" id="tl_p_act">0.0°</span></div>
+    <div class="telem-row"><span class="telem-lbl">Pitch 目標</span><span class="telem-val" style="color:#63b3ed" id="tl_p_tgt">0.0°</span></div>
+    <div class="telem-row"><span class="telem-lbl">Pitch 角速度</span><span class="telem-val" style="color:#a0aec0" id="tl_pr">0.0 °/s</span></div>
+    <div class="telem-row"><span class="telem-lbl">Yaw 角速度</span><span class="telem-val" style="color:#718096" id="tl_yr">0.0 °/s</span></div>
+  </div>
+
+  <!-- Stability margins -->
+  <div class="sec">⚡ 內環離散穩定裕度</div>
+  <div class="mboard">
+    <div style="font-size:10px;color:#4a5568;text-align:right" id="margin-spinner"></div>
+    <div class="mgrid">
+      <div class="mcell"><div class="lb">Roll PM</div><div id="pm_r" class="vl">--</div></div>
+      <div class="mcell"><div class="lb">Roll GM</div><div id="gm_r" class="vl">--</div></div>
+      <div class="mcell"><div class="lb">Pitch PM</div><div id="pm_p" class="vl">--</div></div>
+      <div class="mcell"><div class="lb">Pitch GM</div><div id="gm_p" class="vl">--</div></div>
+    </div>
+    <div id="advice" class="advice">等待中…</div>
+  </div>
+
+  <!-- Bode plot -->
+  <div class="bode-wrap">
+    <div class="sec" style="margin:0 0 4px">📈 Roll 內環 Bode（藍=幅 橘=相）</div>
+    <canvas id="bodeCanvas" style="height:120px"></canvas>
+    <div id="bode-info">--</div>
+  </div>
+
+  <!-- Hardware mismatch analysis -->
+  <div class="sec">🔧 硬體不對稱誤差分析</div>
+  <div style="background:#0a0a14;border:1px solid #2d2d3a;border-radius:7px;padding:8px 9px">
+    <div style="font-size:9px;color:#4a5568;margin-bottom:5px;line-height:1.5">
+      調整以下滑桿模擬硬體差異，Bode 圖同時顯示<br>
+      <span style="color:#4299e1">■ 理想</span>　<span style="color:#f56565">■ 帶誤差</span> 兩條曲線。
+    </div>
+    <div class="sub" style="margin-top:0">馬達 Kt 差異（對角馬達對）</div>
+    <div class="slrow">
+      <span>偏差</span>
+      <input type="range" id="kt_mismatch" min="-50" max="50" step="1" value="0" style="accent-color:#f56565">
+      <span class="sv" id="kt_mismatch_v" style="color:#f56565">+0%</span>
+    </div>
+    <div style="font-size:9px;color:#374151;margin-top:-2px;line-height:1.4">
+      Kt 偏差（±%）：個體差異、磨損、繞線不均
+    </div>
+    <div class="sub" style="margin-top:5px">PWM/ESC 額外訊號延遲</div>
+    <div class="slrow">
+      <span>延遲</span>
+      <input type="range" id="pwm_delay" min="0" max="2000" step="10" value="0" style="accent-color:#ed8936">
+      <span class="sv" id="pwm_delay_v" style="color:#ed8936">0 μs</span>
+    </div>
+    <div style="font-size:9px;color:#374151;margin-top:-2px;line-height:1.4">
+      DShot &lt;10μs ✅　劣質ESC 可達 500μs+
+    </div>
+    <div class="sub" style="margin-top:5px">MOSFET R_DS_on 差異</div>
+    <div class="slrow">
+      <span>R_DS</span>
+      <input type="range" id="rds_mismatch" min="0" max="500" step="5" value="0" style="accent-color:#9f7aea">
+      <span class="sv" id="rds_mismatch_v" style="color:#9f7aea">0 mΩ</span>
+    </div>
+    <div style="font-size:9px;color:#374151;margin-top:-2px;line-height:1.4">
+      接觸阻抗（mΩ），等效 Kt 衰減。良好 &lt;20mΩ
+    </div>
+    <div id="mismatch-impact" style="margin-top:6px;background:#111120;border-radius:5px;padding:5px 7px;font-size:10px;font-family:monospace;line-height:1.7">
+      <span style="color:#4a5568">等待計算…</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CENTRE: 3D + Charts ═══════════ -->
+<div id="centre">
+  <div id="main3d"><canvas id="droneCanvas"></canvas></div>
+  <div id="charts">
+    <div class="chart-wrap"><canvas id="rollChart"></canvas><div class="chart-lbl">Roll (°) ▬目標 ▬實際</div></div>
+    <div class="chart-wrap"><canvas id="pitchChart"></canvas><div class="chart-lbl">Pitch (°) ▬目標 ▬實際</div></div>
+  </div>
+</div>
+
+<!-- ═══════════ RIGHT: Parameters ═══════════ -->
+<div id="right">
+  <h1>⚙️ 參數設定</h1>
+
+  <div class="sec">1. 硬體實體</div>
+  <div class="grid2">
+    <div class="ig"><label>機體重量 m (g)</label><input type="number" id="m_g" value="650" min="50" max="5000"></div>
+    <div class="ig"><label>臂長 L (cm)</label><input type="number" id="L_cm" value="35" min="5" max="150"></div>
+  </div>
+  <!-- J auto-computed from m & L, with manual override -->
+  <div style="background:#0a0a14;border:1px solid #1e1e30;border-radius:6px;padding:7px 8px;margin-top:2px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <label style="font-size:10px;color:#6b7280">轉動慣量 J (g·m²)</label>
+      <label style="font-size:9px;color:#4a5568;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="j_manual" style="width:12px;height:12px;accent-color:#ed8936"> 手動覆蓋
+      </label>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="number" id="inertia_J" value="4.2" min="0.01" max="200" step="0.01" style="flex:1;background:#111120;border-color:#2d3748" readonly>
+      <span id="j_formula_badge" style="font-size:9px;color:#48bb78;font-family:monospace;white-space:nowrap">🔄 自動</span>
+    </div>
+    <div id="j_breakdown" style="font-size:9px;color:#374151;margin-top:3px;font-family:monospace;line-height:1.5"></div>
+  </div>
+  <div class="ig" style="margin-top:4px"><label>阻尼係數 b (N·m·s/rad)</label><input type="number" id="damp_b" value="0.012" min="0" max="0.5" step="0.001"></div>
+
+  <div class="sec">2. 迴圈頻率</div>
+  <div class="grid2">
+    <div class="ig"><label>外環 Angle (Hz)</label><input type="number" id="outer_freq" value="500" min="50" max="4000"></div>
+    <div class="ig"><label>內環 Rate (Hz)</label><input type="number" id="inner_freq" value="2000" min="100" max="8000"></div>
+  </div>
+  <div class="freq-badge" id="freq-ratio-info">內/外環比 = 4×</div>
+  <div style="font-size:9px;color:#374151;margin-top:2px;line-height:1.5">⚠️ 內環頻率建議 ≥ 4× D-term fc（= <span id="freq_min_hint">320</span> Hz），低於此值離散延遲將導致發散</div>
+
+  <div class="sec">3. 外環 — 角度控制器</div>
+  <div class="slrow"><span>Roll Kp</span><input type="range" id="ang_r_kp" min="0" max="15" step="0.1" value="4.5"><span class="sv" id="ang_r_kp_v">4.50</span></div>
+  <div class="slrow"><span>Pitch Kp</span><input type="range" id="ang_p_kp" min="0" max="15" step="0.1" value="4.5"><span class="sv" id="ang_p_kp_v">4.50</span></div>
+  <div class="slrow"><span>Yaw Kp</span><input type="range" id="ang_y_kp" min="0" max="10" step="0.1" value="2.5"><span class="sv" id="ang_y_kp_v">2.50</span></div>
+
+  <div class="sec">4. 內環 — 角速度控制器</div>
+  <div class="twocol">
+    <div>
+      <div class="sub">Roll</div>
+      <div class="slrow"><span>Kp</span><input type="range" id="rr_kp" min="0" max="4" step="0.01" value="1.0"><span class="sv" id="rr_kp_v">1.000</span></div>
+      <div class="slrow"><span>Ki</span><input type="range" id="rr_ki" min="0" max="10" step="0.1" value="2.0"><span class="sv" id="rr_ki_v">2.000</span></div>
+      <div class="slrow"><span>Kd</span><input type="range" id="rr_kd" min="0" max="1.0" step="0.01" value="0.15"><span class="sv" id="rr_kd_v">0.150</span></div>
+      <div class="slrow"><span>ILim</span><input type="range" id="rr_ilim" min="0.1" max="10" step="0.1" value="3.0"><span class="sv" id="rr_ilim_v">3.00</span></div>
+    </div>
+    <div>
+      <div class="sub">Pitch</div>
+      <div class="slrow"><span>Kp</span><input type="range" id="rp_kp" min="0" max="4" step="0.01" value="1.0"><span class="sv" id="rp_kp_v">1.000</span></div>
+      <div class="slrow"><span>Ki</span><input type="range" id="rp_ki" min="0" max="10" step="0.1" value="2.0"><span class="sv" id="rp_ki_v">2.000</span></div>
+      <div class="slrow"><span>Kd</span><input type="range" id="rp_kd" min="0" max="1.0" step="0.01" value="0.15"><span class="sv" id="rp_kd_v">0.150</span></div>
+      <div class="slrow"><span>ILim</span><input type="range" id="rp_ilim" min="0.1" max="10" step="0.1" value="3.0"><span class="sv" id="rp_ilim_v">3.00</span></div>
+    </div>
+  </div>
+  <div class="sub">Yaw</div>
+  <div class="grid2">
+    <div><div class="slrow"><span>Kp</span><input type="range" id="ry_kp" min="0" max="3" step="0.01" value="0.35"><span class="sv" id="ry_kp_v">0.350</span></div></div>
+    <div><div class="slrow"><span>Ki</span><input type="range" id="ry_ki" min="0" max="2" step="0.01" value="0.05"><span class="sv" id="ry_ki_v">0.050</span></div></div>
+  </div>
+
+  <div class="sec">5. D-term 低通濾波</div>
+  <div class="slrow"><span>fc</span><input type="range" id="dterm_fc" min="10" max="500" step="5" value="80"><span class="sv" id="dterm_fc_v">80 Hz</span></div>
+  <div style="font-size:9px;color:#374151;margin-top:-3px">Kd 為阻尼係數（N·m·s/rad），fc 為角速度低通截止頻率</div>
+
+  <div class="sec">6. 目標角度</div>
+  <div class="tgt-box">
+    <div class="slrow"><span>Roll</span><input type="range" id="tgt_roll_sl" min="-60" max="60" step="0.5" value="0" style="accent-color:#f56565"><span class="sv" id="tgt_roll_unit" style="color:#f56565">0.0°</span></div>
+    <div class="slrow"><span>Pitch</span><input type="range" id="tgt_pitch_sl" min="-60" max="60" step="0.5" value="0" style="accent-color:#63b3ed"><span class="sv" id="tgt_pitch_unit" style="color:#63b3ed">0.0°</span></div>
+    <div id="tgt-status" style="font-size:9px;color:#374151;font-family:monospace;margin-top:3px;text-align:center">目標：Roll 0.0°  Pitch 0.0°</div>
+  </div>
+
+  <div class="sec">7. 飛行指令</div>
+  <div class="grid2">
+    <button class="btn b-blue" id="step-btn">⚡ Roll+Pitch ±20°</button>
+    <button class="btn b-amber" id="step-roll-btn">↔ Roll ±30°</button>
+  </div>
+  <button class="btn b-green" id="hover-btn">⬜ Hover（歸零）</button>
+  <button class="btn b-red" id="dist-btn">💥 隨機外力干擾</button>
+  <button class="btn" id="reset-btn" style="background:#1e2d1e;color:#68d391">🔄 重置積分器與姿態</button>
+</div>
+</div><!-- #app -->
+
+<script>
+'use strict';
+
+/* ═══ State ═══ */
+let py=null, ready=false;
+let marginDirty=true, marginBusy=false, marginDebounce=null;
+const R2D=180/Math.PI, D2R=Math.PI/180;
+const S={roll:0,pitch:0,yaw:0,rRate:0,pRate:0,yRate:0};
+const T={roll:0,pitch:0,yaw:0};
+let distR=0,distP=0,distY=0;
+let _distDuration=0;    // 干擾持續時間 ms（倒數計時）
+let _distR=0,_distP=0,_distY=0;  // 持續干擾的儲存值
+const H={ra:[],rt:[],pa:[],pt:[]};
+const MAX_H=300;
+let bodeData=null;
+let _lastFrameTime=performance.now();
+
+function scheduleMargin(){
+  marginDirty=true;
+  clearTimeout(marginDebounce);
+  marginDebounce=setTimeout(()=>{marginDirty=true;},150);
+}
+
+/* ═══ Boot ═══ */
+async function boot(){
+  try{
+    py=await loadPyodide();
+    await py.loadPackage(['numpy','scipy']);
+
+    py.runPython(`
+import numpy as np
+from scipy import signal
+import json
+
+_esR=0.0;_esP=0.0;_esY=0.0
+# D-term LPF states（存低通濾波後的角速度）
+_dfR=0.0;_dfP=0.0;_dfY=0.0
+
+def reset_all():
+    global _esR,_esP,_esY,_dfR,_dfP,_dfY
+    _esR=0.0;_esP=0.0;_esY=0.0;_dfR=0.0;_dfP=0.0;_dfY=0.0
+
+def step_inner(dt_i, b, J,
+               akR, akP, akY,
+               rkp,rki,rkd,rilim,
+               pkp,pki,pkd,pilim,
+               ykp,yki, dfc,
+               rAct,pAct,yAct,
+               rRate,pRate,yRate,
+               trR,trP,trY,
+               dR,dP,dY):
+    """
+    單一內環步（dt = 1/inner_freq）。
+    D-term：對實際角速度做一階低通後直接用作阻尼項。
+      _dfR = LPF(rRate)  [低通濾波後的角速度]
+      tauR = Kp*eR + Ki*∫eR - Kd*_dfR
+    Kd 單位：N·m·s/rad（阻尼係數），不需除以 dt，無初始衝擊問題。
+    """
+    global _esR,_esP,_esY,_dfR,_dfP,_dfY
+    wc    = 2*np.pi*float(dfc)
+    alpha = wc*dt_i/(1+wc*dt_i)   # 低通 IIR 係數
+
+    # ── Roll rate PID ──
+    eR   = trR - rRate
+    _esR = float(np.clip(_esR + eR*dt_i, -rilim, rilim))
+    _dfR = float(_dfR + alpha*(rRate - _dfR))   # LPF on rate
+    tauR = rkp*eR + rki*_esR - rkd*_dfR
+
+    # ── Pitch rate PID ──
+    eP   = trP - pRate
+    _esP = float(np.clip(_esP + eP*dt_i, -pilim, pilim))
+    _dfP = float(_dfP + alpha*(pRate - _dfP))   # LPF on rate
+    tauP = pkp*eP + pki*_esP - pkd*_dfP
+
+    # ── Yaw rate PI ──
+    eY   = trY - yRate
+    _esY = float(np.clip(_esY + eY*dt_i, -2.0, 2.0))
+    tauY = ykp*eY + yki*_esY
+
+    # ── Rigid body ──
+    aR = (tauR - b*rRate)/J + dR
+    aP = (tauP - b*pRate)/J + dP
+    aY = (tauY - b*yRate)/(J*0.5) + dY
+
+    return [float(rAct+rRate*dt_i), float(pAct+pRate*dt_i), float(yAct+yRate*dt_i),
+            float(rRate+aR*dt_i),   float(pRate+aP*dt_i),   float(yRate+aY*dt_i)]
+
+def step_batch(m_g, L_cm, J_gm2, outer_freq, inner_freq, b,
+               akR, akP, akY,
+               rkp,rki,rkd,rilim,
+               pkp,pki,pkd,pilim,
+               ykp,yki, dfc,
+               rAct,pAct,yAct,
+               rRate,pRate,yRate,
+               rTgt,pTgt,yTgt,
+               dR,dP,dY,
+               n_outer):
+    """
+    雙環批次模擬。
+    n_outer: 外環步數（JS 端已限制上限，Python 端再做一層保護）
+    N_ratio: 每外環步執行的內環步數，上限 32 防止卡頓
+    step_inner 已內聯消除函數呼叫開銷。
+    """
+    global _esR,_esP,_esY,_dfR,_dfP,_dfY
+    J    = float(J_gm2) / 1000.0
+    b_   = float(b)
+    dt_i = 1.0 / float(inner_freq)
+    N    = min(32, max(1, round(float(inner_freq) / float(outer_freq))))
+    wc   = 2.0 * np.pi * float(dfc)
+    alpha = wc * dt_i / (1.0 + wc * dt_i)
+    n_steps = min(3, int(n_outer))   # 外環步數上限 3
+
+    rA=float(rAct); pA=float(pAct); yA=float(yAct)
+    rR=float(rRate); pR=float(pRate); yR=float(yRate)
+
+    for k in range(n_steps):
+        # 外環：計算目標角速度指令
+        trR = akR * (rTgt - rA)
+        trP = akP * (pTgt - pA)
+        trY = akY * (yTgt - yA)
+        # 內環：N 步（內聯，無函數呼叫開銷）
+        for i in range(N):
+            _dR_ = dR if (k==0 and i==0) else 0.0
+            _dP_ = dP if (k==0 and i==0) else 0.0
+            _dY_ = dY if (k==0 and i==0) else 0.0
+            # D-term LPF on rate
+            _dfR = float(_dfR + alpha*(rR - _dfR))
+            _dfP = float(_dfP + alpha*(pR - _dfP))
+            _dfY = float(_dfY + alpha*(yR - _dfY))
+            # Roll
+            eR  = trR - rR
+            _esR = float(np.clip(_esR + eR*dt_i, -rilim, rilim))
+            tauR = rkp*eR + rki*_esR - rkd*_dfR
+            # Pitch
+            eP  = trP - pR
+            _esP = float(np.clip(_esP + eP*dt_i, -pilim, pilim))
+            tauP = pkp*eP + pki*_esP - pkd*_dfP
+            # Yaw
+            eY  = trY - yR
+            _esY = float(np.clip(_esY + eY*dt_i, -2.0, 2.0))
+            tauY = ykp*eY + yki*_esY
+            # Rigid body
+            aR_ = (tauR - b_*rR) / J + _dR_
+            aP_ = (tauP - b_*pR) / J + _dP_
+            aY_ = (tauY - b_*yR) / (J*0.5) + _dY_
+            rA += rR*dt_i;  pA += pR*dt_i;  yA += yR*dt_i
+            rR += aR_*dt_i; pR += aP_*dt_i; yR += aY_*dt_i
+
+    return [rA, pA, yA, rR, pR, yR]
+
+def margins_bode(J_gm2, inner_freq, b, kp, ki, kd, dfc):
+    """
+    內環開迴路 L(s) = C(s) * G(s) * D(s)
+    G(s) = 1/(J*s+b)  [剛體，輸入轉矩，輸出角速度]
+    C(s) = Kp + Ki/s + Kd*wc/(s+wc)  [PID, D on rate]
+    D(s) = e^{-1.0*T*s}  [離散延遲修正，1.0T與Betaflight實測吻合]
+    直接連續域數值計算，避免 bilinear 積分器數值問題。
+    """
+    J  = float(J_gm2)/1000.0
+    wc = 2.0*np.pi*float(dfc)
+    T  = 1.0/float(inner_freq)
+    w  = np.logspace(0, np.log10(np.pi/T*0.95), 8000)
+    jw = 1j*w
+    C  = float(kp)+float(ki)/jw+float(kd)*wc/(jw+wc)
+    G  = 1.0/(J*jw+float(b))
+    D  = np.exp(-1.0j*w*T)   # 離散延遲 1.0×T（取樣+ZOH，與Betaflight實測吻合）
+    Lv = C*G*D
+    mag_db    = 20.0*np.log10(np.maximum(np.abs(Lv),1e-12))
+    phase_deg = np.unwrap(np.angle(Lv))*180.0/np.pi
+    wgc=-1.0; pm=999.0
+    for i in range(len(mag_db)-1):
+        if mag_db[i]>=0 and mag_db[i+1]<0:
+            f=mag_db[i]/(mag_db[i]-mag_db[i+1])
+            wgc=w[i]+f*(w[i+1]-w[i])
+            pm=180.0+phase_deg[i]+f*(phase_deg[i+1]-phase_deg[i])
+            break
+    wpc=-1.0; gm=-1.0
+    for i in range(len(phase_deg)-1):
+        if phase_deg[i]>=-180.0 and phase_deg[i+1]<-180.0:
+            f=(phase_deg[i]+180.0)/(phase_deg[i]-phase_deg[i+1])
+            wpc=w[i]+f*(w[i+1]-w[i])
+            lin=10.0**((mag_db[i]+f*(mag_db[i+1]-mag_db[i]))/20.0)
+            if lin>1e-12: gm=1.0/lin
+            break
+    step=max(1,len(w)//120)
+    return {"pm":float(pm),"gm":float(gm),"wgc":float(wgc),"wpc":float(wpc),
+            "mag":mag_db[::step].tolist(),"pha":phase_deg[::step].tolist(),
+            "wv":w[::step].tolist()}
+
+def margins_bode_mismatch(J_gm2, inner_freq, b, kp, ki, kd, dfc,
+                          kt_pct, pwm_us, rds_mOhm):
+    """
+    帶硬體誤差的開迴路 Bode 分析。
+    
+    kt_pct   : 馬達 Kt 偏差百分比（±%）
+                對角馬達對增益 = nominal × (1 + kt_pct/100)
+                等效：J_eff = J / (1 + kt_pct/100)
+    pwm_us   : 額外 PWM/ESC 延遲（微秒）
+                增加到離散延遲中：delay_T += pwm_us*1e-6 / T_s
+    rds_mOhm : 額外 MOSFET 接觸阻抗（毫歐）
+                R_coil ≈ 0.1Ω，增益衰減 = R_coil/(R_coil + R_DS)
+                等效 Kt 衰減，再乘到 J_eff 上
+    """
+    J_nom = float(J_gm2)/1000.0
+    T     = 1.0/float(inner_freq)
+    wc    = 2.0*np.pi*float(dfc)
+    
+    # 1. Kt 差異 → 等效增益因子
+    kt_factor = 1.0 + float(kt_pct)/100.0
+    if kt_factor <= 0: kt_factor = 0.01
+    
+    # 2. R_DS → 等效 Kt 衰減（DC 增益）
+    R_coil = 0.1   # Ω，典型無刷電機
+    R_ds   = float(rds_mOhm)*1e-3
+    rds_gain = R_coil / (R_coil + R_ds)
+    
+    # 綜合等效：J_eff = J / (kt_factor * rds_gain)
+    J_eff = J_nom / (kt_factor * rds_gain)
+    
+    # 3. 額外 PWM 延遲
+    extra_delay_T = float(pwm_us)*1e-6 / T
+    total_delay   = 1.0 + extra_delay_T
+    
+    w  = np.logspace(0, np.log10(np.pi/T*0.95), 8000)
+    jw = 1j*w
+    C  = float(kp)+float(ki)/jw+float(kd)*wc/(jw+wc)
+    G  = 1.0/(J_eff*jw+float(b))
+    D  = np.exp(-total_delay*1j*w*T)
+    Lv = C*G*D
+    mag_db    = 20.0*np.log10(np.maximum(np.abs(Lv),1e-12))
+    phase_deg = np.unwrap(np.angle(Lv))*180.0/np.pi
+    wgc=-1.0; pm=999.0
+    for i in range(len(mag_db)-1):
+        if mag_db[i]>=0 and mag_db[i+1]<0:
+            f=mag_db[i]/(mag_db[i]-mag_db[i+1])
+            wgc=w[i]+f*(w[i+1]-w[i])
+            pm=180.0+phase_deg[i]+f*(phase_deg[i+1]-phase_deg[i]); break
+    wpc=-1.0; gm=-1.0
+    for i in range(len(phase_deg)-1):
+        if phase_deg[i]>=-180.0 and phase_deg[i+1]<-180.0:
+            f=(phase_deg[i]+180.0)/(phase_deg[i]-phase_deg[i+1])
+            wpc=w[i]+f*(w[i+1]-w[i])
+            lin=10.0**((mag_db[i]+f*(mag_db[i+1]-mag_db[i]))/20.0)
+            if lin>1e-12: gm=1.0/lin; break
+    step=max(1,len(w)//120)
+    return {"pm":float(pm),"gm":float(gm),"wgc":float(wgc),"wpc":float(wpc),
+            "mag":mag_db[::step].tolist(),"pha":phase_deg[::step].tolist(),
+            "wv":w[::step].tolist(),
+            "J_eff":float(J_eff*1000),
+            "delay_T":float(total_delay)}
+    J  = float(J_gm2)/1000.0
+    wc = 2.0*np.pi*float(dfc)
+    T  = 1.0/float(inner_freq)
+    w  = np.logspace(0, np.log10(np.pi/T*0.95), 8000)
+    jw = 1j*w
+    C  = float(kp)+float(ki)/jw+float(kd)*wc/(jw+wc)
+    G  = 1.0/(J*jw+float(b))
+    D  = np.exp(-1.0j*w*T)   # 離散延遲 1.0×T（取樣+ZOH，與Betaflight實測吻合）
+    Lv = C*G*D
+    mag_db    = 20.0*np.log10(np.maximum(np.abs(Lv),1e-12))
+    phase_deg = np.unwrap(np.angle(Lv))*180.0/np.pi
+    wgc=-1.0;pm=999.0
+    for i in range(len(mag_db)-1):
+        if mag_db[i]>=0 and mag_db[i+1]<0:
+            f=mag_db[i]/(mag_db[i]-mag_db[i+1])
+            wgc=w[i]+f*(w[i+1]-w[i])
+            pm=180.0+phase_deg[i]+f*(phase_deg[i+1]-phase_deg[i])
+            break
+    wpc=-1.0;gm=-1.0
+    for i in range(len(phase_deg)-1):
+        if phase_deg[i]>=-180.0 and phase_deg[i+1]<-180.0:
+            f=(phase_deg[i]+180.0)/(phase_deg[i]-phase_deg[i+1])
+            wpc=w[i]+f*(w[i+1]-w[i])
+            lin=10.0**((mag_db[i]+f*(mag_db[i+1]-mag_db[i]))/20.0)
+            if lin>1e-12: gm=1.0/lin
+            break
+    step=max(1,len(w)//120)
+    return {"pm":float(pm),"gm":float(gm),"wgc":float(wgc),"wpc":float(wpc),
+            "mag":mag_db[::step].tolist(),"pha":phase_deg[::step].tolist(),
+            "wv":w[::step].tolist()}
+`);
+
+    setStatus('✅ Python 引擎就緒 — 雙環 3D 模擬中','#48bb78');
+    ready=true;
+
+    // Slider display bindings
+    ALL_SLIDERS.forEach(id=>{
+      const el=document.getElementById(id);
+      if(!el) return;
+      el.addEventListener('input',e=>{
+        const v=parseFloat(e.target.value);
+        let disp;
+        if(id==='dterm_fc')      disp = v.toFixed(0)+' Hz';
+        else if(id==='kt_mismatch') disp = (v>=0?'+':'')+v.toFixed(0)+'%';
+        else if(id==='pwm_delay')   disp = v.toFixed(0)+' μs';
+        else if(id==='rds_mismatch')disp = v.toFixed(0)+' mΩ';
+        else { const dp=id.includes('kd')?3:id.includes('kp')||id.includes('ki')?3:2; disp=v.toFixed(dp); }
+        document.getElementById(id+'_v').textContent=disp;
+        scheduleMargin();
+      });
+    });
+    document.querySelectorAll('input[type=number]').forEach(el=>
+      el.addEventListener('input',()=>scheduleMargin()));
+
+    ['outer_freq','inner_freq','dterm_fc'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.addEventListener('input', ()=>{
+        updateFreqRatio();
+        _lastFrameTime = performance.now();
+      });
+    });
+    updateFreqRatio();
+    updateJFromML();   // 初始化 J 顯示（m_g=650g, L_cm=35cm → J 自動計算）
+
+    requestAnimationFrame(loop);
+
+  }catch(e){
+    setStatus('❌ 載入失敗: '+e.message,'#f56565');
+  }
+}
+
+const ALL_SLIDERS=['ang_r_kp','ang_p_kp','ang_y_kp',
+  'rr_kp','rr_ki','rr_kd','rr_ilim',
+  'rp_kp','rp_ki','rp_kd','rp_ilim',
+  'ry_kp','ry_ki','dterm_fc',
+  'kt_mismatch','pwm_delay','rds_mismatch'];
+
+function setStatus(msg,color){
+  const el=document.getElementById('status');
+  el.textContent=msg; el.style.color=color||'#ed8936';
+}
+function gv(id){return parseFloat(document.getElementById(id).value);}
+
+function updateFreqRatio(){
+  const r=gv('inner_freq')/gv('outer_freq');
+  document.getElementById('freq-ratio-info').textContent=
+    `內/外環比 = ${r.toFixed(1)}×  (建議 4~16×)`;
+  // 更新臨界頻率提示（內環建議 ≥ 4 × dfc）
+  const hint = document.getElementById('freq_min_hint');
+  if(hint) hint.textContent = (4 * gv('dterm_fc')).toFixed(0);
+}
+
+/* ── J auto-computation ─────────────────────────
+   質量分配模型（X 型四軸）：
+     每個馬達+槳 ≈ 8.5% 總重，位於臂端
+     中心機體（含電池FC）≈ 66%，等效半徑 0.2×L_phys
+   L_cm 是渲染臂長（視覺用），物理臂長 L_phys 用以下估算：
+     7吋四軸 wheelbase ≈ 280mm → arm ≈ 140mm
+     L_phys = L_cm * 0.004  (35cm render → 0.14m physical)
+   Ixx = 4 × m_motor × (L_phys×sin45°)²  +  ½ × m_body × r_body²
+──────────────────────────────────────────────── */
+function computeJ(m_g_val, L_cm_val) {
+  const m       = m_g_val  / 1000.0;        // kg
+  // 物理臂長估算：渲染值 35 ↔ 真實 0.14m（典型 7 吋）
+  const L_phys  = L_cm_val * 0.004;          // m  (35cm → 0.14m)
+  const m_motor = 0.085 * m;                 // 每顆馬達+槳 ≈ 8.5%
+  const m_body  = m - 4 * m_motor;           // 中心部件 ≈ 66%
+  const r_body  = L_phys * 0.20;             // 中心等效半徑
+  const sin45   = Math.SQRT2 / 2;
+  const J_motors = 4 * m_motor * Math.pow(L_phys * sin45, 2);
+  const J_body   = 0.5 * m_body * r_body * r_body;
+  return (J_motors + J_body) * 1000.0;       // kg·m² → g·m²
+}
+
+function updateJFromML() {
+  const manualCB = document.getElementById('j_manual');
+  if (manualCB && manualCB.checked) return;  // 手動覆蓋模式，不自動更新
+
+  const m_g_val  = gv('m_g');
+  const L_cm_val = gv('L_cm');
+  const J_val    = computeJ(m_g_val, L_cm_val);
+
+  const jInput = document.getElementById('inertia_J');
+  jInput.value = J_val.toFixed(2);
+
+  // 顯示分解
+  const m = m_g_val / 1000, L = L_cm_val / 100;
+  const m_motor = 0.085 * m, m_body = m - 4 * m_motor;
+  const J_motors = 4 * m_motor * Math.pow(L * Math.sin(Math.PI/4), 2) * 1000;
+  const J_body   = 0.5 * m_body * Math.pow(L * 0.20, 2) * 1000;
+  const bd = document.getElementById('j_breakdown');
+  if (bd) bd.textContent =
+    `馬達×4: ${J_motors.toFixed(2)} + 機體: ${J_body.toFixed(2)} = ${J_val.toFixed(2)} g·m²`;
+
+  scheduleMargin();
+}
+
+// 手動覆蓋 checkbox
+document.getElementById('j_manual').addEventListener('change', function() {
+  const jInput = document.getElementById('inertia_J');
+  const badge  = document.getElementById('j_formula_badge');
+  if (this.checked) {
+    jInput.removeAttribute('readonly');
+    jInput.style.borderColor = '#ed8936';
+    if (badge) { badge.textContent = '✏️ 手動'; badge.style.color = '#ed8936'; }
+  } else {
+    jInput.setAttribute('readonly', true);
+    jInput.style.borderColor = '#2d3748';
+    if (badge) { badge.textContent = '🔄 自動'; badge.style.color = '#48bb78'; }
+    updateJFromML();  // 切回自動時立即更新
+  }
+});
+
+// J 手動輸入時觸發 margin 更新
+document.getElementById('inertia_J').addEventListener('input', () => scheduleMargin());
+
+// m 或 L 改變時重算 J，並重設幀計時器
+document.getElementById('m_g').addEventListener('input',  ()=>{ updateJFromML(); _lastFrameTime=performance.now(); });
+document.getElementById('L_cm').addEventListener('input', ()=>{ updateJFromML(); _lastFrameTime=performance.now(); });
+document.getElementById('damp_b').addEventListener('input',()=>{ _lastFrameTime=performance.now(); });
+
+// 初始計算
+// updateJFromML() called in load event
+
+/* ═══ Physics ═══ */
+async function physicsStep(){
+  if(!ready) return;
+  const now=performance.now();
+  const elapsed=Math.min(now-_lastFrameTime,50);
+  _lastFrameTime=now;
+
+  const outer_freq = Math.max(50,  Math.min(4000, gv('outer_freq')));
+  const inner_freq = Math.max(100, Math.min(8000, gv('inner_freq')));
+  const dt_o = 1.0 / outer_freq;
+  // n_outer：本幀追補的外環步數，上限 3（防止頻率切換後突發大量計算）
+  const n_outer = Math.min(3, Math.max(1, Math.round(elapsed * 0.001 / dt_o)));
+
+  const g=py.globals;
+  g.set('m_g',   gv('m_g'));     g.set('L_cm',  gv('L_cm'));
+  g.set('J_gm2', gv('inertia_J'));
+  g.set('outer_freq',outer_freq); g.set('inner_freq',inner_freq);
+  g.set('b',     gv('damp_b'));
+  g.set('akR',   gv('ang_r_kp')); g.set('akP',gv('ang_p_kp')); g.set('akY',gv('ang_y_kp'));
+  g.set('rkp',   gv('rr_kp'));   g.set('rki', gv('rr_ki'));
+  g.set('rkd',   gv('rr_kd'));   g.set('rilim',gv('rr_ilim'));
+  g.set('pkp',   gv('rp_kp'));   g.set('pki', gv('rp_ki'));
+  g.set('pkd',   gv('rp_kd'));   g.set('pilim',gv('rp_ilim'));
+  g.set('ykp',   gv('ry_kp'));   g.set('yki', gv('ry_ki'));
+  g.set('dfc',   gv('dterm_fc'));
+  g.set('rAct',  S.roll);   g.set('pAct', S.pitch);  g.set('yAct', S.yaw);
+  g.set('rRate', S.rRate);  g.set('pRate',S.pRate);  g.set('yRate',S.yRate);
+  g.set('rTgt',  T.roll);   g.set('pTgt', T.pitch);  g.set('yTgt', T.yaw);
+  // 持續干擾機制：_distDuration 倒數期間每幀持續施加干擾
+  if(_distDuration > 0){
+    distR = _distR; distP = _distP; distY = _distY;
+    _distDuration = Math.max(0, _distDuration - elapsed);
+  }
+
+  g.set('dR',    distR);    g.set('dP',   distP);    g.set('dY',   distY);
+  g.set('n_outer',n_outer);
+  distR=0;distP=0;distY=0;
+
+  try{
+    const res=py.runPython(
+      'step_batch(m_g,L_cm,J_gm2,outer_freq,inner_freq,b,'+
+      'akR,akP,akY,rkp,rki,rkd,rilim,pkp,pki,pkd,pilim,ykp,yki,dfc,'+
+      'rAct,pAct,yAct,rRate,pRate,yRate,rTgt,pTgt,yTgt,dR,dP,dY,n_outer)'
+    ).toJs();
+    S.roll=res[0];S.pitch=res[1];S.yaw=res[2];
+    S.rRate=res[3];S.pRate=res[4];S.yRate=res[5];
+  }catch(e){
+    console.warn('physicsStep error:',e.message);
+  }
+
+  H.ra.push(S.roll*R2D);  H.rt.push(T.roll*R2D);
+  H.pa.push(S.pitch*R2D); H.pt.push(T.pitch*R2D);
+  if(H.ra.length>MAX_H){H.ra.shift();H.rt.shift();H.pa.shift();H.pt.shift();}
+}
+
+/* ═══ Telemetry DOM update ═══ */
+function updateTelemetry(){
+  const fmt=(v,dp=1)=>v.toFixed(dp);
+  const colorAngle=v=>Math.abs(v)<5?'#48bb78':Math.abs(v)<30?'#ecc94b':'#f56565';
+  const ra=S.roll*R2D, pa=S.pitch*R2D;
+  document.getElementById('tl_r_act').textContent=fmt(ra)+'°';
+  document.getElementById('tl_r_act').style.color=colorAngle(ra);
+  document.getElementById('tl_r_tgt').textContent=fmt(T.roll*R2D)+'°';
+  document.getElementById('tl_rr').textContent=fmt(S.rRate*R2D)+' °/s';
+  document.getElementById('tl_p_act').textContent=fmt(pa)+'°';
+  document.getElementById('tl_p_act').style.color=colorAngle(pa);
+  document.getElementById('tl_p_tgt').textContent=fmt(T.pitch*R2D)+'°';
+  document.getElementById('tl_pr').textContent=fmt(S.pRate*R2D)+' °/s';
+  document.getElementById('tl_yr').textContent=fmt(S.yRate*R2D)+' °/s';
+}
+
+/* ═══ Stability margins ═══ */
+async function updateMargins(){
+  if(!ready||!marginDirty||marginBusy) return;
+  marginDirty=false; marginBusy=true;
+  const sp=document.getElementById('margin-spinner');
+  if(sp) sp.textContent='⟳ 計算中…';
+
+  try{
+    const g=py.globals;
+    g.set('J_gm2',gv('inertia_J'));
+    g.set('inner_freq',gv('inner_freq'));
+    g.set('b',gv('damp_b'));
+    g.set('dfc',gv('dterm_fc'));
+    g.set('kt_pct',  gv('kt_mismatch'));
+    g.set('pwm_us',  gv('pwm_delay'));
+    g.set('rds_mOhm',gv('rds_mismatch'));
+
+    g.set('kp',gv('rr_kp')); g.set('ki',gv('rr_ki')); g.set('kd',gv('rr_kd'));
+    const rRes=JSON.parse(py.runPython('json.dumps(margins_bode(J_gm2,inner_freq,b,kp,ki,kd,dfc))'));
+    const rMis=JSON.parse(py.runPython('json.dumps(margins_bode_mismatch(J_gm2,inner_freq,b,kp,ki,kd,dfc,kt_pct,pwm_us,rds_mOhm))'));
+
+    g.set('kp',gv('rp_kp')); g.set('ki',gv('rp_ki')); g.set('kd',gv('rp_kd'));
+    const pRes=JSON.parse(py.runPython('json.dumps(margins_bode(J_gm2,inner_freq,b,kp,ki,kd,dfc))'));
+    const pMis=JSON.parse(py.runPython('json.dumps(margins_bode_mismatch(J_gm2,inner_freq,b,kp,ki,kd,dfc,kt_pct,pwm_us,rds_mOhm))'));
+
+    setMarginUI('pm_r','gm_r',rRes);
+    setMarginUI('pm_p','gm_p',pRes);
+    bodeData={ideal:rRes, mismatch:rMis};
+
+    // 誤差影響報告
+    const kt=gv('kt_mismatch'), pwm=gv('pwm_delay'), rds=gv('rds_mismatch');
+    const hasErr=(Math.abs(kt)>0||pwm>0||rds>0);
+    const impDiv=document.getElementById('mismatch-impact');
+    if(impDiv){
+      if(!hasErr){
+        impDiv.innerHTML='<span style="color:#374151">無誤差（理想狀態）</span>';
+      }else{
+        const dpm_r=rMis.pm>=900?'+∞':(rMis.pm-rRes.pm).toFixed(1);
+        const dpm_p=pMis.pm>=900?'+∞':(pMis.pm-pRes.pm).toFixed(1);
+        const col_r=rMis.pm<=0?'#f56565':rMis.pm<35?'#ecc94b':'#48bb78';
+        const col_p=pMis.pm<=0?'#f56565':pMis.pm<35?'#ecc94b':'#48bb78';
+        const delayMs=(rMis.delay_T*(1/gv('inner_freq'))*1000).toFixed(2);
+        impDiv.innerHTML=
+          '<span style="color:#9f7aea">帶誤差 Roll PM：</span>'+
+          '<span style="color:'+col_r+';font-weight:700">'+(rMis.pm>=900?'∞':rMis.pm.toFixed(1))+'°</span>'+
+          ' <span style="color:#4a5568">(Δ'+dpm_r+'°)</span><br>'+
+          '<span style="color:#9f7aea">帶誤差 Pitch PM：</span>'+
+          '<span style="color:'+col_p+';font-weight:700">'+(pMis.pm>=900?'∞':pMis.pm.toFixed(1))+'°</span>'+
+          ' <span style="color:#4a5568">(Δ'+dpm_p+'°)</span><br>'+
+          '<span style="color:#9f7aea">等效延遲：</span>'+
+          '<span style="color:#ed8936">'+delayMs+' ms</span>'+
+          '  <span style="color:#9f7aea">J_eff：</span>'+
+          '<span style="color:#ed8936">'+rMis.J_eff.toFixed(2)+' g·m²</span>';
+      }
+    }
+
+    const minPM=Math.min(rRes.pm,pRes.pm);
+    const minGM=Math.min(rRes.gm<0?999:rRes.gm, pRes.gm<0?999:pRes.gm);
+    const adv=document.getElementById('advice');
+    if(minPM<=0||minGM<1.0)
+      adv.innerHTML="<span class='danger'>❌ 系統發散！降低 Kp 或增加 Kd。</span>";
+    else if(minPM<35||minGM<1.8)
+      adv.innerHTML="<span class='warn'>⚠️ 裕度偏低，顫振風險。增加 Kd。</span>";
+    else if(minPM>65)
+      adv.innerHTML="<span class='warn'>⚠️ PM>65°，響應偏慢，可提升 Kp。</span>";
+    else
+      adv.innerHTML="<span class='safe'>✅ 裕度健康，控制帶剛性優良。</span>";
+
+  }catch(err){
+    // Python 計算出錯不崩潰 loop，僅顯示錯誤
+    console.warn('updateMargins error:', err.message);
+    const adv=document.getElementById('advice');
+    if(adv) adv.innerHTML="<span class='warn'>⚠️ 裕度計算異常，請檢查參數</span>";
+  }
+
+  marginBusy=false;
+  if(sp) sp.textContent='';
+  if(marginDirty) scheduleMargin();
+}
+
+function setMarginUI(pmId,gmId,res){
+  const pm=document.getElementById(pmId), gm=document.getElementById(gmId);
+  pm.textContent=res.pm.toFixed(1)+'°';
+  pm.className='vl '+(res.pm<=0?'danger':res.pm<35?'warn':'safe');
+  if(res.gm<0){gm.textContent='∞';gm.className='vl safe';}
+  else{gm.textContent=res.gm.toFixed(2)+'×';gm.className='vl '+(res.gm<=1.0?'danger':res.gm<1.8?'warn':'safe');}
+}
+
+/* ═══ Bode plot ═══ */
+function drawBode(){
+  const c=document.getElementById('bodeCanvas');
+  const g=c.getContext('2d');
+  const W=c.parentElement.clientWidth-14;
+  const H=120;
+  if(c.width!==W) c.width=W;
+  c.height=H;
+  g.fillStyle='#0a0a14'; g.fillRect(0,0,W,H);
+
+  // bodeData 現在是 {ideal, mismatch} 或舊格式
+  const ideal    = bodeData?.ideal    ?? bodeData;
+  const mismatch = bodeData?.mismatch ?? null;
+  if(!ideal||!ideal.wv||ideal.wv.length<2) return;
+
+  const HM=56, HP=54, GAP=10;
+  const wv=ideal.wv, n=wv.length;
+  const wMin=Math.log10(Math.max(wv[0],0.1)), wMax=Math.log10(wv[n-1]);
+  const xw=w=>((Math.log10(Math.max(w,0.1))-wMin)/(wMax-wMin))*(W-2)+1;
+  const ym=m=>HM-2-((m-(-60))/(40-(-60)))*(HM-4);
+  const yp=p=>HM+GAP+HP-2-((p-(-360))/(30-(-360)))*(HP-4);
+
+  // Magnitude grid
+  g.strokeStyle='#111120'; g.lineWidth=0.5;
+  [-40,-20,0,20].forEach(db=>{
+    const y=ym(db); if(y<0||y>HM) return;
+    g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();
+    g.fillStyle='#1e2d3a';g.font='8px monospace';g.fillText(db+'dB',2,y-1);
+  });
+  g.strokeStyle='#2d3748';g.lineWidth=0.8;g.setLineDash([3,3]);
+  g.beginPath();g.moveTo(0,ym(0));g.lineTo(W,ym(0));g.stroke();g.setLineDash([]);
+
+  // Helper: draw a mag+phase pair
+  function drawCurve(data, magColor, phaColor, lw){
+    g.strokeStyle=magColor; g.lineWidth=lw; g.beginPath();
+    data.mag.forEach((m,i)=>{const x=xw(data.wv[i]),y=ym(m);i===0?g.moveTo(x,y):g.lineTo(x,y);});
+    g.stroke();
+    g.strokeStyle=phaColor; g.lineWidth=lw; g.beginPath();
+    data.pha.forEach((p,i)=>{
+      const x=xw(data.wv[i]),y=Math.max(HM+GAP,Math.min(HM+GAP+HP-1,yp(p)));
+      i===0?g.moveTo(x,y):g.lineTo(x,y);
+    });
+    g.stroke();
+  }
+
+  // Phase -180 ref
+  g.strokeStyle='#2d3748';g.lineWidth=0.8;g.setLineDash([3,3]);
+  g.beginPath();g.moveTo(0,yp(-180));g.lineTo(W,yp(-180));g.stroke();g.setLineDash([]);
+  g.fillStyle='#1e2d3a';g.font='8px monospace';g.fillText('-180°',2,yp(-180)-1);
+
+  // Separator
+  g.strokeStyle='#1e1e30';g.lineWidth=1;
+  g.beginPath();g.moveTo(0,HM+GAP/2);g.lineTo(W,HM+GAP/2);g.stroke();
+
+  // Draw mismatch first (behind), then ideal on top
+  const hasMismatch = mismatch && mismatch.wv && mismatch.wv.length>1;
+  if(hasMismatch) drawCurve(mismatch,'#f5656566','#f5a62366', 1.2);
+  drawCurve(ideal, '#4299e1',  '#ed8936',  1.6);
+
+  // Legend
+  if(hasMismatch){
+    g.font='8px monospace';
+    g.fillStyle='#4299e1'; g.fillText('■ 理想',2,HM-4);
+    g.fillStyle='#f56565'; g.fillText('■ 帶誤差',42,HM-4);
+  }
+
+  // Crossover markers (ideal)
+  if(ideal.wgc>0){
+    const xgc=xw(ideal.wgc);
+    g.strokeStyle='#48bb7888';g.lineWidth=1;g.setLineDash([2,2]);
+    g.beginPath();g.moveTo(xgc,0);g.lineTo(xgc,H);g.stroke();g.setLineDash([]);
+    g.fillStyle='#48bb78';g.font='8px monospace';
+    g.fillText('ωgc '+(ideal.wgc/(2*Math.PI)).toFixed(0)+'Hz',Math.min(xgc+2,W-60),10);
+  }
+  if(ideal.wpc>0){
+    const xpc=xw(ideal.wpc);
+    g.strokeStyle='#f5656588';g.lineWidth=1;g.setLineDash([2,2]);
+    g.beginPath();g.moveTo(xpc,0);g.lineTo(xpc,H);g.stroke();g.setLineDash([]);
+    g.fillStyle='#f56565';g.font='8px monospace';
+    g.fillText('ωpc '+(ideal.wpc/(2*Math.PI)).toFixed(0)+'Hz',Math.min(xpc+2,W-60),HM+GAP+10);
+  }
+
+  const info=document.getElementById('bode-info');
+  const pm=ideal.pm;
+  const col=pm<=0?'#f56565':pm<35?'#ecc94b':'#48bb78';
+  let infoHtml = `<span style="color:${col};font-weight:700">PM=${pm>=900?'∞':pm.toFixed(1)+'°'}</span>`;
+  if(ideal.wgc>0) infoHtml +=
+    `  f<sub>gc</sub>=${(ideal.wgc/(2*Math.PI)).toFixed(1)}Hz`+
+    (ideal.wpc>0?`  f<sub>pc</sub>=${(ideal.wpc/(2*Math.PI)).toFixed(1)}Hz`:'  f<sub>pc</sub>=∞');
+  if(hasMismatch && (Math.abs(gv('kt_mismatch'))>0||gv('pwm_delay')>0||gv('rds_mismatch')>0)){
+    const pm2=mismatch.pm;
+    const col2=pm2<=0?'#f56565':pm2<35?'#ecc94b':'#48bb78';
+    infoHtml += `  <span style="color:#f56565">▶誤差 PM=<span style="color:${col2};font-weight:700">${pm2>=900?'∞':pm2.toFixed(1)+'°'}</span></span>`;
+  }
+  info.innerHTML=infoHtml;
+}
+
+/* ═══ 3D Camera ═══ */
+const droneC=document.getElementById('droneCanvas');
+const ctx3=droneC.getContext('2d');
+
+const CAM={yaw:30*D2R, pitch:-35*D2R, zoom:1.0, dragging:false, lastX:0, lastY:0};
+const CAM_PITCH_MIN=-89*D2R, CAM_PITCH_MAX=89*D2R;
+const CAM_ZOOM_MIN=0.35, CAM_ZOOM_MAX=3.0;
+
+function resize3D(){
+  droneC.width  = droneC.parentElement.clientWidth;
+  droneC.height = droneC.parentElement.clientHeight;
+}
+// 立即設定 canvas 尺寸，不等 Pyodide
+resize3D();
+window.addEventListener('resize', resize3D);
+
+function proj(x,y,z,cx,cy){
+  const xY=x*Math.cos(CAM.yaw)-y*Math.sin(CAM.yaw);
+  const yY=x*Math.sin(CAM.yaw)+y*Math.cos(CAM.yaw);
+  const yC=yY*Math.cos(CAM.pitch)-z*Math.sin(CAM.pitch);
+  const zC=yY*Math.sin(CAM.pitch)+z*Math.cos(CAM.pitch);
+  const FOCAL=430*CAM.zoom, DIST=520;
+  const s=FOCAL/Math.max(10,DIST-zC);
+  return{sx:cx+xY*s, sy:cy-yC*s, d:zC, s};
+}
+
+// Mouse drag
+droneC.style.cursor='grab';
+droneC.addEventListener('mousedown',e=>{if(e.button!==0)return;CAM.dragging=true;CAM.lastX=e.clientX;CAM.lastY=e.clientY;droneC.style.cursor='grabbing';e.preventDefault();});
+window.addEventListener('mousemove',e=>{if(!CAM.dragging)return;const dx=e.clientX-CAM.lastX,dy=e.clientY-CAM.lastY;CAM.lastX=e.clientX;CAM.lastY=e.clientY;CAM.yaw+=dx*0.008;CAM.pitch=Math.max(CAM_PITCH_MIN,Math.min(CAM_PITCH_MAX,CAM.pitch-dy*0.008));});
+window.addEventListener('mouseup',()=>{CAM.dragging=false;droneC.style.cursor='grab';});
+droneC.addEventListener('wheel',e=>{e.preventDefault();CAM.zoom=Math.max(CAM_ZOOM_MIN,Math.min(CAM_ZOOM_MAX,CAM.zoom*(e.deltaY>0?0.92:1.09)));},{passive:false});
+droneC.addEventListener('dblclick',()=>{CAM.yaw=30*D2R;CAM.pitch=-35*D2R;CAM.zoom=1.0;});
+
+// Touch
+let _lt=null;
+droneC.addEventListener('touchstart',e=>{_lt=e.touches;e.preventDefault();},{passive:false});
+droneC.addEventListener('touchmove',e=>{e.preventDefault();if(!_lt)return;if(e.touches.length===1&&_lt.length===1){const dx=e.touches[0].clientX-_lt[0].clientX,dy=e.touches[0].clientY-_lt[0].clientY;CAM.yaw+=dx*0.008;CAM.pitch=Math.max(CAM_PITCH_MIN,Math.min(CAM_PITCH_MAX,CAM.pitch-dy*0.008));}else if(e.touches.length===2&&_lt.length===2){const d0=Math.hypot(_lt[0].clientX-_lt[1].clientX,_lt[0].clientY-_lt[1].clientY),d1=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(d0>0)CAM.zoom=Math.max(CAM_ZOOM_MIN,Math.min(CAM_ZOOM_MAX,CAM.zoom*(d1/d0)));}_lt=e.touches;},{passive:false});
+droneC.addEventListener('touchend',e=>{_lt=e.touches;});
+
+function rotRP(pt,roll,pitch){
+  const y1=pt.y*Math.cos(roll)-pt.z*Math.sin(roll);
+  const z1=pt.y*Math.sin(roll)+pt.z*Math.cos(roll);
+  const x2=pt.x*Math.cos(pitch)+z1*Math.sin(pitch);
+  const z2=-pt.x*Math.sin(pitch)+z1*Math.cos(pitch);
+  return{x:x2,y:y1,z:z2};
+}
+function rotYaw(pt,yaw){return{x:pt.x*Math.cos(yaw)-pt.y*Math.sin(yaw),y:pt.x*Math.sin(yaw)+pt.y*Math.cos(yaw),z:pt.z};}
+
+const ARM_ANG=[ 45,-45,135,-135];
+const MCOLS=['#f56565','#63b3ed','#68d391','#ecc94b'];
+const MLBLS=['FR','FL','BR','BL'];
+let _animF=0;
+
+function drawPropEllipse(g,mx,my,ms,ex,ey,Os,rscale){
+  const k=ms/Os;
+  const rx={x:ex.x*k,y:ex.y*k}, ry2={x:ey.x*k,y:ey.y*k};
+  const N=48; g.beginPath();
+  for(let i=0;i<=N;i++){const t=i/N*2*Math.PI,px=mx+rscale*(Math.cos(t)*rx.x+Math.sin(t)*ry2.x),py=my+rscale*(Math.cos(t)*rx.y+Math.sin(t)*ry2.y);i===0?g.moveTo(px,py):g.lineTo(px,py);}
+  g.closePath();
+}
+
+function drawScene(){
+  _animF++;
+  const W=droneC.width, Hc=droneC.height;
+  if(!W || !Hc){ resize3D(); return; }  // canvas 尚未定尺寸，先重設再等下一幀
+  const cx=W*0.5, cy=Hc*0.52;
+  ctx3.clearRect(0,0,W,Hc);
+  const bg=ctx3.createRadialGradient(cx,cy*0.6,0,cx,cy,Math.max(W,Hc)*0.7);
+  bg.addColorStop(0,'#13132a'); bg.addColorStop(1,'#060610');
+  ctx3.fillStyle=bg; ctx3.fillRect(0,0,W,Hc);
+
+  // Ground grid
+  const GZ=-115;
+  ctx3.strokeStyle='rgba(38,38,68,0.7)'; ctx3.lineWidth=0.6;
+  for(let grd=-200;grd<=200;grd+=50){
+    const p1=proj(grd,-200,GZ,cx,cy),p2=proj(grd,200,GZ,cx,cy);
+    ctx3.beginPath();ctx3.moveTo(p1.sx,p1.sy);ctx3.lineTo(p2.sx,p2.sy);ctx3.stroke();
+    const p3=proj(-200,grd,GZ,cx,cy),p4=proj(200,grd,GZ,cx,cy);
+    ctx3.beginPath();ctx3.moveTo(p3.sx,p3.sy);ctx3.lineTo(p4.sx,p4.sy);ctx3.stroke();
+  }
+  // Stand post
+  const pb=proj(0,0,GZ,cx,cy),pt=proj(0,0,0,cx,cy);
+  ctx3.strokeStyle='#252540';ctx3.lineWidth=8;ctx3.beginPath();ctx3.moveTo(pb.sx,pb.sy);ctx3.lineTo(pt.sx,pt.sy);ctx3.stroke();
+  ctx3.strokeStyle='#505070';ctx3.lineWidth=3.5;ctx3.beginPath();ctx3.moveTo(pb.sx,pb.sy);ctx3.lineTo(pt.sx,pt.sy);ctx3.stroke();
+
+  const r=S.roll, p=S.pitch, yw=S.yaw;
+  const L=gv('L_cm')*3.3;
+
+  // Motor positions
+  const motors=ARM_ANG.map((deg,i)=>{
+    const a=deg*D2R;
+    let mpt={x:L*Math.cos(a),y:L*Math.sin(a),z:0};
+    mpt=rotYaw(mpt,yw); mpt=rotRP(mpt,r,p);
+    const prj=proj(mpt.x,mpt.y,mpt.z,cx,cy);
+    return{...prj,color:MCOLS[i],label:MLBLS[i]};
+  });
+
+  // Prop basis vectors (for correct disc projection)
+  const PROP_R=28;
+  const bx3=rotRP({x:PROP_R,y:0,z:0},r,p);
+  const by3=rotRP({x:0,y:PROP_R,z:0},r,p);
+  const O_s=proj(0,0,0,cx,cy);
+  const bx_s=proj(bx3.x,bx3.y,bx3.z,cx,cy);
+  const by_s=proj(by3.x,by3.y,by3.z,cx,cy);
+  const ex={x:bx_s.sx-O_s.sx,y:bx_s.sy-O_s.sy};
+  const ey={x:by_s.sx-O_s.sx,y:by_s.sy-O_s.sy};
+
+  // Arms (X-frame)
+  [[0,3],[1,2]].forEach(([a,b])=>{
+    ctx3.lineWidth=7;ctx3.strokeStyle='#1e1e35';ctx3.beginPath();ctx3.moveTo(motors[a].sx,motors[a].sy);ctx3.lineTo(motors[b].sx,motors[b].sy);ctx3.stroke();
+    ctx3.lineWidth=3;ctx3.strokeStyle='#3a3a58';ctx3.beginPath();ctx3.moveTo(motors[a].sx,motors[a].sy);ctx3.lineTo(motors[b].sx,motors[b].sy);ctx3.stroke();
+  });
+
+  // FC board centre
+  const cen=proj(0,0,0,cx,cy);
+  const bsz=16*cen.s;
+  ctx3.fillStyle='#1a1a30';ctx3.fillRect(cen.sx-bsz,cen.sy-bsz*0.6,bsz*2,bsz*1.2);
+  ctx3.strokeStyle='#4a4a70';ctx3.lineWidth=0.7;ctx3.strokeRect(cen.sx-bsz,cen.sy-bsz*0.6,bsz*2,bsz*1.2);
+  ctx3.fillStyle='#63b3ed';ctx3.font=`${Math.max(7,bsz*0.6)}px monospace`;ctx3.textAlign='center';ctx3.textBaseline='middle';ctx3.fillText('FC',cen.sx,cen.sy);ctx3.textAlign='left';ctx3.textBaseline='alphabetic';
+
+  // Thrust vector
+  const upR=rotRP({x:0,y:0,z:50},r,p);
+  const upP=proj(upR.x,upR.y,upR.z,cx,cy);
+  const uvdx=upP.sx-cen.sx,uvdy=upP.sy-cen.sy,uvL=Math.sqrt(uvdx*uvdx+uvdy*uvdy);
+  const uva=Math.min(0.9,0.4+Math.abs(r)*0.8+Math.abs(p)*0.8);
+  ctx3.strokeStyle=`rgba(72,187,120,${uva})`;ctx3.lineWidth=2;
+  ctx3.beginPath();ctx3.moveTo(cen.sx,cen.sy);ctx3.lineTo(upP.sx,upP.sy);ctx3.stroke();
+  if(uvL>5){const ux=uvdx/uvL,uy=uvdy/uvL;ctx3.fillStyle=`rgba(72,187,120,${uva})`;ctx3.beginPath();ctx3.moveTo(upP.sx,upP.sy);ctx3.lineTo(upP.sx-ux*8+uy*4,upP.sy-uy*8-ux*4);ctx3.lineTo(upP.sx-ux*8-uy*4,upP.sy-uy*8+ux*4);ctx3.closePath();ctx3.fill();}
+
+  // Motors + props (depth sorted)
+  [...motors].sort((a,b2)=>a.d-b2.d).forEach(m=>{
+    ctx3.strokeStyle=m.color+'1e';ctx3.lineWidth=3;drawPropEllipse(ctx3,m.sx,m.sy,m.s,ex,ey,O_s.s,1.18);ctx3.stroke();
+    ctx3.strokeStyle=m.color+'66';ctx3.lineWidth=1.8;drawPropEllipse(ctx3,m.sx,m.sy,m.s,ex,ey,O_s.s,1.0);ctx3.stroke();
+    ctx3.strokeStyle=m.color+'30';ctx3.lineWidth=1.0;drawPropEllipse(ctx3,m.sx,m.sy,m.s,ex,ey,O_s.s,0.5);ctx3.stroke();
+    ctx3.fillStyle='#1a1a30';ctx3.beginPath();ctx3.arc(m.sx,m.sy,10*m.s,0,2*Math.PI);ctx3.fill();
+    ctx3.strokeStyle='#4a4a6a';ctx3.lineWidth=0.8;ctx3.beginPath();ctx3.arc(m.sx,m.sy,10*m.s,0,2*Math.PI);ctx3.stroke();
+    ctx3.fillStyle=m.color;ctx3.beginPath();ctx3.arc(m.sx,m.sy,6*m.s,0,2*Math.PI);ctx3.fill();
+    ctx3.fillStyle='#fff';ctx3.font=`${Math.max(7,9*m.s)}px sans-serif`;ctx3.textAlign='center';ctx3.textBaseline='middle';ctx3.fillText(m.label,m.sx,m.sy);ctx3.textAlign='left';ctx3.textBaseline='alphabetic';
+  });
+
+  // ADI (artificial horizon)
+  drawHorizon(W-70,60,48,r,p);
+
+  // HUD
+  ctx3.fillStyle='rgba(10,10,22,0.72)';ctx3.beginPath();ctx3.roundRect(7,7,240,82,5);ctx3.fill();
+  const _cp=CAM.pitch*R2D, camPLbl=_cp>=0?'俯 '+_cp.toFixed(0)+'°':'仰 '+Math.abs(_cp).toFixed(0)+'°';
+  const camYDeg=((CAM.yaw*R2D%360+360)%360).toFixed(0);
+  ctx3.font='10px monospace';
+  ctx3.fillStyle='#374151';ctx3.fillText('📷 '+camPLbl+'  yaw '+camYDeg+'°  zoom '+CAM.zoom.toFixed(2)+'×',13,22);
+  ctx3.fillStyle=CAM.dragging?'#fbd38d':'#1e2d3a';ctx3.fillText(CAM.dragging?'⬤ 拖曳中…':'拖曳旋轉  滾輪縮放  雙擊重置',13,34);
+  ctx3.fillStyle='#90cdf4';
+  ctx3.fillText('Roll  '+(S.roll*R2D).toFixed(2).padStart(7)+'°  → tgt '+(T.roll*R2D).toFixed(1)+'°',13,50);
+  ctx3.fillText('Pitch '+(S.pitch*R2D).toFixed(2).padStart(7)+'°  → tgt '+(T.pitch*R2D).toFixed(1)+'°',13,64);
+  ctx3.fillStyle='#4a5568';ctx3.fillText('Yaw   '+(S.yaw*R2D).toFixed(1).padStart(7)+'°',13,78);
+
+  // Inner/Outer freq indicator
+  ctx3.fillStyle='rgba(10,10,22,0.65)';ctx3.beginPath();ctx3.roundRect(7,Hc-36,230,30,5);ctx3.fill();
+  ctx3.fillStyle='#374151';ctx3.font='10px monospace';
+  ctx3.fillText('外環 '+gv('outer_freq').toFixed(0)+' Hz  內環 '+gv('inner_freq').toFixed(0)+' Hz  (比 '+(gv('inner_freq')/gv('outer_freq')).toFixed(0)+'×)',13,Hc-20);
+  ctx3.fillText('ωR '+(S.rRate*R2D).toFixed(1)+' °/s   ωP '+(S.pRate*R2D).toFixed(1)+' °/s',13,Hc-7);
+}
+
+function drawHorizon(cx2,cy2,r2,roll,pitch){
+  ctx3.save();ctx3.beginPath();ctx3.arc(cx2,cy2,r2,0,2*Math.PI);
+  ctx3.fillStyle='rgba(10,10,22,0.7)';ctx3.fill();ctx3.clip();
+  ctx3.translate(cx2,cy2);ctx3.rotate(-roll);
+  const poff=pitch*r2*1.5;
+  ctx3.fillStyle='#1a3a6a';ctx3.fillRect(-r2,-r2-poff,r2*2,r2+poff);
+  ctx3.fillStyle='#3d2a10';ctx3.fillRect(-r2,-poff,r2*2,r2-poff+r2);
+  ctx3.strokeStyle='#a0aec0';ctx3.lineWidth=1.5;ctx3.beginPath();ctx3.moveTo(-r2,-poff);ctx3.lineTo(r2,-poff);ctx3.stroke();
+  ctx3.restore();
+  ctx3.strokeStyle='#4a5568';ctx3.lineWidth=1.2;ctx3.beginPath();ctx3.arc(cx2,cy2,r2,0,2*Math.PI);ctx3.stroke();
+  ctx3.strokeStyle='#e2e8f0';ctx3.lineWidth=1;ctx3.beginPath();ctx3.moveTo(cx2-9,cy2);ctx3.lineTo(cx2+9,cy2);ctx3.stroke();ctx3.beginPath();ctx3.moveTo(cx2,cy2-4);ctx3.lineTo(cx2,cy2+4);ctx3.stroke();
+  ctx3.fillStyle='#374151';ctx3.font='8px monospace';ctx3.textAlign='center';ctx3.fillText('ADI',cx2,cy2+r2+11);ctx3.textAlign='left';
+}
+
+/* ═══ Wave charts ═══ */
+function drawChart(id,act,tgt){
+  const c=document.getElementById(id);
+  const g=c.getContext('2d');
+  const W=c.parentElement.clientWidth, Hc=c.parentElement.clientHeight;
+  if(c.width!==W||c.height!==Hc){c.width=W;c.height=Hc;}
+  g.fillStyle='#0d0d1a';g.fillRect(0,0,W,Hc);
+  g.strokeStyle='rgba(38,38,68,0.5)';g.lineWidth=0.5;
+  [0.25,0.75].forEach(f=>{g.beginPath();g.moveTo(0,Hc*f);g.lineTo(W,Hc*f);g.stroke();});
+  g.strokeStyle='rgba(60,60,90,0.8)';g.lineWidth=0.8;g.beginPath();g.moveTo(0,Hc/2);g.lineTo(W,Hc/2);g.stroke();
+  if(act.length<2) return;
+  const sw=W/MAX_H, scY=Hc/90, mY=Hc/2, off=MAX_H-act.length;
+  g.strokeStyle='rgba(49,130,206,0.55)';g.lineWidth=1.2;g.setLineDash([4,3]);
+  g.beginPath();tgt.forEach((v,i)=>{const x=(i+off)*sw,y=mY-v*scY;i===0?g.moveTo(x,y):g.lineTo(x,y);});g.stroke();g.setLineDash([]);
+  g.strokeStyle='#48bb78';g.lineWidth=1.8;
+  g.beginPath();act.forEach((v,i)=>{const x=(i+off)*sw,y=mY-v*scY;i===0?g.moveTo(x,y):g.lineTo(x,y);});g.stroke();
+  g.fillStyle='#2d3748';g.font='9px monospace';
+  g.fillText('+20°',2,mY-20*scY+3);g.fillText('  0°',2,mY+3);g.fillText('-20°',2,mY+20*scY+3);
+  const lv=act[act.length-1];
+  g.fillStyle=lv>0?'#48bb78':'#f56565';g.font='bold 11px monospace';g.textAlign='right';
+  g.fillText(lv.toFixed(1)+'°',W-4,16);g.textAlign='left';
+}
+
+/* ═══ Controls ═══ */
+function syncTgtUI(){
+  const rd=T.roll*R2D, pd=T.pitch*R2D;
+  document.getElementById('tgt_roll_sl').value=rd;
+  document.getElementById('tgt_pitch_sl').value=pd;
+  document.getElementById('tgt_roll_unit').textContent=rd.toFixed(1)+'°';
+  document.getElementById('tgt_pitch_unit').textContent=pd.toFixed(1)+'°';
+  document.getElementById('tgt-status').textContent='目標：Roll '+rd.toFixed(1)+'°  Pitch '+pd.toFixed(1)+'°';
+}
+
+['roll','pitch'].forEach(axis=>{
+  const slEl=document.getElementById('tgt_'+axis+'_sl');
+  const unitEl=document.getElementById('tgt_'+axis+'_unit');
+  slEl.addEventListener('input',()=>{
+    const v=parseFloat(slEl.value);
+    T[axis]=v*D2R;
+    unitEl.textContent=v.toFixed(1)+'°';
+    document.getElementById('tgt-status').textContent='目標：Roll '+(T.roll*R2D).toFixed(1)+'°  Pitch '+(T.pitch*R2D).toFixed(1)+'°';
+  });
+});
+
+document.getElementById('step-btn').addEventListener('click',()=>{
+  const was=T.roll; T.roll=was===0?20*D2R:0; T.pitch=was===0?20*D2R:0; syncTgtUI();
+});
+document.getElementById('step-roll-btn').addEventListener('click',()=>{
+  T.roll=T.roll===0?30*D2R:0; syncTgtUI();
+});
+document.getElementById('hover-btn').addEventListener('click',()=>{
+  T.roll=0;T.pitch=0; syncTgtUI();
+});
+document.getElementById('dist-btn').addEventListener('click',()=>{
+  // 隨機角加速度干擾，持續 60ms（約 30個外環步@500Hz）
+  // 在 physicsStep 中每步都施加，讓姿態有明顯偏移
+  _distR = (Math.random()-0.5) * 600;  // rad/s²
+  _distP = (Math.random()-0.5) * 600;
+  _distY = (Math.random()-0.5) * 150;
+  _distDuration = 60;  // ms
+});
+document.getElementById('reset-btn').addEventListener('click',()=>{
+  S.roll=0;S.pitch=0;S.yaw=0;S.rRate=0;S.pRate=0;S.yRate=0;
+  T.roll=0;T.pitch=0;T.yaw=0;
+  distR=0;distP=0;distY=0;_distR=0;_distP=0;_distY=0;_distDuration=0;
+  H.ra.length=0;H.rt.length=0;H.pa.length=0;H.pt.length=0;
+  bodeData=null;
+  _lastFrameTime=performance.now();
+  if(ready) py.runPython('reset_all()');
+  scheduleMargin(); syncTgtUI();
+});
+
+/* ═══ Main loop ═══ */
+async function loop(){
+  await physicsStep();
+  await updateMargins();
+  updateTelemetry();
+  drawScene();
+  drawBode();
+  drawChart('rollChart',H.ra,H.rt);
+  drawChart('pitchChart',H.pa,H.pt);
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('load', ()=>{ boot(); updateJFromML(); });
+</script>
+</body>
+</html>
