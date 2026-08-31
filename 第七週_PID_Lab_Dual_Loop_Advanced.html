@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>控制反應頻率對比實驗台 (雙環 PID 教材版)</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; text-align: center; background: #eaedf1; margin: 0; padding: 20px; color: #2c3e50; }
+        h2 { margin-bottom: 5px; color: #1a252f; }
+        p { color: #7f8c8d; margin-top: 0; font-size: 14px; }
+        .main-container { display: flex; justify-content: center; align-items: flex-start; gap: 20px; max-width: 1150px; margin: 0 auto; }
+        canvas { background: #ffffff; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .panel { background: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left; width: 360px; max-height: 85vh; overflow-y: auto; }
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: block; font-weight: bold; margin-bottom: 2px; font-size: 13px; color: #34495e; }
+        .slider-row { display: flex; align-items: center; gap: 10px; }
+        input[type="range"] { flex-grow: 1; accent-color: #e74c3c; }
+        .freq-slider { accent-color: #27ae60 !important; }
+        .val-disp { width: 60px; font-weight: bold; font-family: monospace; text-align: right; color: #2980b9; font-size: 12px; }
+        .freq-disp { color: #27ae60; }
+        .btn { width: 100%; padding: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 5px; transition: 0.1s; }
+        .btn-disturb { background: #e67e22; color: white; }
+        .btn-disturb:hover { background: #d35400; }
+        .btn-reset { background: #95a5a6; color: white; margin-top: 8px; }
+        .btn-reset:hover { background: #7f8c8d; }
+        .highlight-box { background: #ebf5fb; padding: 10px; border-radius: 5px; border-left: 4px solid #27ae60; margin-bottom: 10px; }
+        .section-title { font-size: 13px; font-weight: bold; color: #e67e22; margin: 10px 0 5px 0; border-bottom: 1px dashed #d5dbdb; padding-bottom: 3px; }
+    </style>
+</head>
+<body>
+
+    <h2>單軸治具：雙環 PID 控制實驗室（外環角度、內環角速度）</h2>
+    <p>核心教學主題：體驗串級（雙環）PID 與物理參數（質量、轉動慣量、臂長）對動態響應的影響</p>
+
+    <div class="main-container">
+        <div>
+            <canvas id="simCanvas" width="680" height="250"></canvas>
+            <div style="margin-top: 10px;"></div>
+            <canvas id="plotCanvas" width="680" height="190"></canvas>
+        </div>
+
+        <div class="panel">
+            
+            <div class="control-group highlight-box">
+                <label style="color: #27ae60; font-size: 14px;">控制反應頻率 (Loop Frequency):</label>
+                <div class="slider-row">
+                    <input type="range" id="freqSlider" class="freq-slider" min="50" max="1000" step="50" value="50">
+                    <span id="freqVal" class="val-disp freq-disp">50 Hz</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>目標角度 (Target Angle):</label>
+                <div class="slider-row">
+                    <input type="range" id="targetSlider" min="-45" max="45" step="1" value="0">
+                    <span id="targetVal" class="val-disp">0°</span>
+                </div>
+            </div>
+
+            <div class="section-title">🧱 物理系統參數 (Physical Parameters)</div>
+            <div class="control-group">
+                <label>系統質量 <i>m</i> <span style="font-weight:normal; color:#7f8c8d;">(總重)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="massSlider" min="0.2" max="5.0" step="0.1" value="1.0">
+                    <span id="massVal" class="val-disp">1.0 kg</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>轉動慣量 <i>J</i> <span style="font-weight:normal; color:#7f8c8d;">(慣性矩)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="inertiaSlider" min="0.005" max="0.1" step="0.005" value="0.025">
+                    <span id="inertiaVal" class="val-disp">0.025</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>機臂半長 <i>L</i> <span style="font-weight:normal; color:#7f8c8d;">(力臂長度)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="lengthSlider" min="0.15" max="0.35" step="0.01" value="0.25">
+                    <span id="lengthVal" class="val-disp">0.25 m</span>
+                </div>
+            </div>
+
+            <div class="section-title">🌐 外環控制器 (Outer Loop: 角度控制)</div>
+            <div class="control-group">
+                <label>外環比例 <i>Kp</i><sub>out</sub> <span style="font-weight:normal; color:#7f8c8d;">(位置響應)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kpOutSlider" min="0.5" max="20.0" step="0.5" value="5.0">
+                    <span id="kpOutVal" class="val-disp">5.0</span>
+                </div>
+            </div>
+
+            <div class="section-title">⚡ 內環控制器 (Inner Loop: 角速度控制)</div>
+            <div class="control-group">
+                <label>內環比例 <i>Kp</i><sub>in</sub> <span style="font-weight:normal; color:#7f8c8d;">(阻尼/剛度)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kpInSlider" min="0.1" max="10.0" step="0.1" value="2.0">
+                    <span id="kpInVal" class="val-disp">2.0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>內環積分 <i>Ki</i><sub>in</sub> <span style="font-weight:normal; color:#7f8c8d;">(消除靜差)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kiInSlider" min="0.0" max="5.0" step="0.1" value="0.5">
+                    <span id="kiInVal" class="val-disp">0.5</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>內環微分 <i>Kd</i><sub>in</sub> <span style="font-weight:normal; color:#7f8c8d;">(角加速度抑制)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kdInSlider" min="0.0" max="1.0" step="0.02" value="0.05">
+                    <span id="kdInVal" class="val-disp">0.05</span>
+                </div>
+            </div>
+
+            <button class="btn btn-disturb" onclick="giveDisturb()">手動撥動管子 (脈衝干擾)</button>
+            <button class="btn btn-reset" onclick="resetSystem()">重置姿態</button>
+        </div>
+    </div>
+
+    <script>
+        const simCanvas = document.getElementById('simCanvas');
+        const ctxSim = simCanvas.getContext('2d');
+        const plotCanvas = document.getElementById('plotCanvas');
+        const ctxPlot = plotCanvas.getContext('2d');
+
+        // --- 物理系統參數 ---
+        let theta = 0.3;          // 當前角度 (rad)
+        let omega = 0.0;          // 當前角速度 (rad/s)
+        let mass = 1.0;           // 質量 (kg)
+        let J = 0.025;            // 轉動慣量 (kg·m²)
+        let arm_length = 0.25;    // 臂長半長 (m)
+        let base_b = 0.005;       // 微小自然阻尼
+
+        // --- 雙環 PID 控制核心變數 ---
+        let control_freq = 50;    // 預設控制頻率 50Hz
+        let target_deg = 0.0;
+
+        // 外環參數 (角度 -> 目標角速度)
+        let Kp_out = 5.0;
+
+        // 內環參數 (角速度 -> 力矩)
+        let Kp_in = 2.0;
+        let Ki_in = 0.5;
+        let Kd_in = 0.05;
+
+        let velocity_integral = 0.0;
+        let last_omega_error = 0.0;
+        let current_omega_target = 0.0;
+
+        // 當前控制器的離散輸出保持量
+        let current_control_torque = 0.0;
+
+        // 示波器歷史
+        let historyLength = 220;
+        let targetHistory = new Array(historyLength).fill(0);
+        let thetaHistory = new Array(historyLength).fill(0);
+
+        // --- UI 事件處理 ---
+        document.getElementById('freqSlider').oninput = function() { control_freq = parseInt(this.value); document.getElementById('freqVal').innerText = this.value + " Hz"; }
+        document.getElementById('targetSlider').oninput = function() { target_deg = parseFloat(this.value); document.getElementById('targetVal').innerText = this.value + "°"; }
+        document.getElementById('massSlider').oninput = function() { mass = parseFloat(this.value); document.getElementById('massVal').innerText = mass.toFixed(1) + " kg"; }
+        document.getElementById('inertiaSlider').oninput = function() { J = parseFloat(this.value); document.getElementById('inertiaVal').innerText = J.toFixed(3); }
+        document.getElementById('lengthSlider').oninput = function() { arm_length = parseFloat(this.value); document.getElementById('lengthVal').innerText = arm_length.toFixed(2) + " m"; }
+        
+        document.getElementById('kpOutSlider').oninput = function() { Kp_out = parseFloat(this.value); document.getElementById('kpOutVal').innerText = Kp_out.toFixed(1); }
+        document.getElementById('kpInSlider').oninput = function() { Kp_in = parseFloat(this.value); document.getElementById('kpInVal').innerText = Kp_in.toFixed(1); }
+        document.getElementById('kiInSlider').oninput = function() { Ki_in = parseFloat(this.value); document.getElementById('kiInVal').innerText = Ki_in.toFixed(1); }
+        document.getElementById('kdInSlider').oninput = function() { Kd_in = parseFloat(this.value); document.getElementById('kdInVal').innerText = Kd_in.toFixed(2); }
+
+        function giveDisturb() { omega = -4.0; }
+        function resetSystem() { theta = 0.4; omega = 0; velocity_integral = 0; last_omega_error = 0; current_control_torque = 0; }
+        simCanvas.addEventListener('mousedown', () => { giveDisturb(); });
+
+        // ========================================================
+        // 【控制學核心】獨立的時間同步機制 (雙環 PID 計算)
+        // ========================================================
+        let last_time = performance.now();
+        let control_accumulator = 0.0;
+
+        function animationLoop(timestamp) {
+            let elapsed = (timestamp - last_time) / 1000; 
+            last_time = timestamp;
+
+            if (elapsed > 0.1) elapsed = 0.1;
+
+            control_accumulator += elapsed;
+            let control_dt = 1 / control_freq;
+
+            while (control_accumulator >= control_dt) {
+                let target_rad = target_deg * Math.PI / 180;
+
+                // --- 1. 外環：角度環 (Angle Loop) ---
+                let angle_error = target_rad - theta;
+                current_omega_target = Kp_out * angle_error;
+                
+                // 限制內環的最大目標角速度，避免過大飽和
+                current_omega_target = Math.max(Math.min(current_omega_target, 12.0), -12.0);
+
+                // --- 2. 內環：速度環 (Velocity Loop) ---
+                let omega_error = current_omega_target - omega;
+
+                let p_term = Kp_in * omega_error;
+
+                velocity_integral += omega_error * control_dt;
+                velocity_integral = Math.max(Math.min(velocity_integral, 3.0), -3.0); // Anti-windup
+                let i_term = Ki_in * velocity_integral;
+
+                let d_term = Kd_in * ((omega_error - last_omega_error) / control_dt);
+                last_omega_error = omega_error;
+
+                // 內環 PID 輸出最終力矩
+                current_control_torque = p_term + i_term + d_term;
+
+                control_accumulator -= control_dt;
+            }
+
+            // --- 連續物理世界運算 ---
+            let total_torque = current_control_torque - (base_b * omega);
+            let alpha = total_torque / J;
+            
+            omega += alpha * elapsed;
+            theta += omega * elapsed;
+
+            // --- 示波器繪圖紀錄 ---
+            targetHistory.push(target_deg); targetHistory.shift();
+            thetaHistory.push(theta * 180 / Math.PI); thetaHistory.shift();
+
+            drawSimulation();
+            drawPlotter();
+
+            requestAnimationFrame(animationLoop);
+        }
+
+        // ========================================================
+        // 畫布渲染功能
+        // ========================================================
+        function drawSimulation() {
+            ctxSim.clearRect(0, 0, simCanvas.width, simCanvas.height);
+            
+            // 根據臂長轉換為畫面像素大小 (0.25m 對應 250px)
+            let px_len = arm_length * 1000;
+
+            // 目標虛線
+            ctxSim.save();
+            ctxSim.translate(simCanvas.width / 2, simCanvas.height / 2 - 15);
+            ctxSim.rotate(target_deg * Math.PI / 180);
+            ctxSim.strokeStyle = '#e74c3c'; ctxSim.setLineDash([4, 4]);
+            ctxSim.beginPath(); ctxSim.moveTo(-300, 0); ctxSim.lineTo(300, 0); ctxSim.stroke();
+            ctxSim.restore();
+
+            // 旋轉機臂
+            ctxSim.save();
+            ctxSim.translate(simCanvas.width / 2, simCanvas.height / 2 - 15);
+            ctxSim.rotate(theta);
+            ctxSim.strokeStyle = '#34495e'; ctxSim.lineWidth = 10; ctxSim.lineCap = 'round';
+            ctxSim.beginPath(); ctxSim.moveTo(-px_len, 0); ctxSim.lineTo(px_len, 0); ctxSim.stroke();
+            
+            // 兩側馬達/配重塊裝飾 (跟隨臂長調整位置)
+            ctxSim.fillStyle = '#e74c3c'; ctxSim.fillRect(-px_len - 10, -12, 10, 24);
+            ctxSim.fillStyle = '#3498db'; ctxSim.fillRect(px_len, -12, 10, 24);
+            ctxSim.restore();
+
+            // 軸心
+            ctxSim.fillStyle = '#1abc9c';
+            ctxSim.beginPath(); ctxSim.arc(simCanvas.width / 2, simCanvas.height / 2 - 15, 12, 0, Math.PI * 2); ctxSim.fill();
+
+            // 三角底座
+            ctxSim.strokeStyle = '#bdc3c7'; ctxSim.lineWidth = 4;
+            ctxSim.beginPath(); ctxSim.moveTo(simCanvas.width/2, simCanvas.height/2);
+            ctxSim.lineTo(simCanvas.width/2 - 25, simCanvas.height - 10);
+            ctxSim.lineTo(simCanvas.width/2 + 25, simCanvas.height - 10);
+            ctxSim.closePath(); ctxSim.stroke();
+        }
+
+        function drawPlotter() {
+            ctxPlot.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
+            ctxPlot.strokeStyle = '#f5f5f5'; ctxPlot.lineWidth = 1;
+            for(let i=0; i<plotCanvas.height; i+=30) {
+                ctxPlot.beginPath(); ctxPlot.moveTo(0, i); ctxPlot.lineTo(plotCanvas.width, i); ctxPlot.stroke();
+            }
+            ctxPlot.strokeStyle = '#d5dbdb';
+            ctxPlot.beginPath(); ctxPlot.moveTo(0, plotCanvas.height/2); ctxPlot.lineTo(plotCanvas.width, plotCanvas.height/2); ctxPlot.stroke();
+
+            function mapY(val) { return plotCanvas.height / 2 - (val * (plotCanvas.height / 120)); }
+            let stepX = plotCanvas.width / (historyLength - 1);
+
+            // 目標線
+            ctxPlot.strokeStyle = '#e74c3c'; ctxPlot.lineWidth = 1.5; ctxPlot.beginPath();
+            ctxPlot.moveTo(0, mapY(targetHistory[0]));
+            for(let i=1; i<historyLength; i++) ctxPlot.lineTo(i * stepX, mapY(targetHistory[i]));
+            ctxPlot.stroke();
+
+            // 姿態線
+            ctxPlot.strokeStyle = '#27ae60'; ctxPlot.lineWidth = 2; ctxPlot.beginPath();
+            ctxPlot.moveTo(0, mapY(thetaHistory[0]));
+            for(let i=1; i<historyLength; i++) ctxPlot.lineTo(i * stepX, mapY(thetaHistory[i]));
+            ctxPlot.stroke();
+
+            ctxPlot.fillStyle = '#34495e'; ctxPlot.font = "bold 11px sans-serif";
+            ctxPlot.fillText("綠線: Pitch 角度", 15, 20);
+            ctxPlot.fillText("紅線: Target 目標", 120, 20);
+        }
+
+        // 啟動模擬
+        requestAnimationFrame(animationLoop);
+    </script>
+</body>
+</html>
