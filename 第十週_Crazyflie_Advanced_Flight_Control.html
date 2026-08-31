@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crazyflie 四旋翼飛行控制方法論 — 完整教學</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}]});"></script>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --fg: #212529;
+    --accent: #0d6efd;
+    --accent2: #6610f2;
+    --code-bg: #f4f4f4;
+    --border: #dee2e6;
+    --card-bg: #ffffff;
+    --muted: #6c757d;
+    --nd: #0dcaf0;
+    --indi: #20c997;
+    --mel: #6f42c1;
+    --lee: #fd7e14;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --fg: #e9ecef;
+      --accent: #4dabf7;
+      --accent2: #9775fa;
+      --code-bg: #1a1d23;
+      --border: #343a40;
+      --card-bg: #16191f;
+      --muted: #adb5bd;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.7;
+    margin: 0;
+    padding: 0;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 2.2rem; border-bottom: 3px solid var(--accent); padding-bottom: .5rem; margin-bottom: .5rem; }
+  h2 { font-size: 1.6rem; margin-top: 2.5rem; border-left: 5px solid var(--accent); padding-left: .8rem; }
+  h3 { font-size: 1.25rem; margin-top: 2rem; color: var(--accent2); }
+  h4 { font-size: 1.05rem; margin-top: 1.5rem; color: var(--fg); }
+  .subtitle { color: var(--muted); font-size: 1.05rem; margin-bottom: 2rem; }
+  .toc {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { margin: .35rem 0; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .badge {
+    display: inline-block;
+    padding: .15rem .5rem;
+    border-radius: 4px;
+    font-size: .78rem;
+    font-weight: 600;
+    margin-right: .4rem;
+    color: #fff;
+  }
+  .b-nd { background: var(--nd); }
+  .b-indi { background: var(--indi); }
+  .b-mel { background: var(--mel); }
+  .b-lee { background: var(--lee); }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1.2rem 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,.04);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: .88rem;
+    line-height: 1.5;
+  }
+  code {
+    font-family: "Fira Code", Consolas, Monaco, monospace;
+    background: var(--code-bg);
+    padding: .1rem .3rem;
+    border-radius: 4px;
+    font-size: .9em;
+  }
+  pre code { background: none; padding: 0; }
+  .math-block { margin: 1.2rem 0; overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: .95rem;
+  }
+  th, td { border: 1px solid var(--border); padding: .6rem .8rem; text-align: left; }
+  th { background: var(--code-bg); }
+  .note {
+    border-left: 4px solid var(--accent);
+    background: var(--card-bg);
+    padding: .8rem 1rem;
+    margin: 1rem 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .warn {
+    border-left: 4px solid #ffc107;
+    background: rgba(255,193,7,.08);
+    padding: .8rem 1rem;
+    margin: 1rem 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .step { font-weight: 700; color: var(--accent); }
+  footer { text-align: center; margin-top: 4rem; padding: 2rem 0; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Crazyflie 四旋翼飛行控制方法論</h1>
+<p class="subtitle">
+  完整教學：NDI、INDI、Mellinger（Differential Flatness）與 Lee（Geometric Control on SE(3)）<br>
+  涵蓋理論推導、無人機動力學與開源韌體程式碼對照
+</p>
+
+<div class="toc">
+  <strong>目錄</strong>
+  <ul>
+    <li><a href="#sec-dynamics">1. 四旋翼動力學基礎</a></li>
+    <li><a href="#sec-coords">2. 座標系統與符號定義</a></li>
+    <li><a href="#sec-nd">3. NDI — Nonlinear Dynamic Inversion</a></li>
+    <li><a href="#sec-indi">4. INDI — Incremental NDI</a></li>
+    <li><a href="#sec-mel">5. Mellinger — Differential Flatness / Min-Snap</a></li>
+    <li><a href="#sec-lee">6. Lee — Geometric Control on SE(3)</a></li>
+    <li><a href="#sec-pid">7. PID 基礎與實作（pid.c）</a></li>
+    <li><a href="#sec-alloc">8. 控制分配（Control Allocation）</a></li>
+    <li><a href="#sec-compare">9. 方法比較總表</a></li>
+    <li><a href="#sec-ref">10. 參考文獻與延伸閱讀</a></li>
+  </ul>
+</div>
+
+<h2 id="sec-dynamics">1. 四旋翼動力學基礎（Quadrotor Dynamics）</h2>
+
+<h3>1.1 剛體運動學與動力學</h3>
+<p>四旋翼可視為一個在三维空間中運動的剛體，其運動由<strong>平移</strong>與<strong>旋轉</strong>兩部分組成。我們使用兩個座標系：</p>
+<ul>
+  <li><strong>世界座標系（World / Inertial frame）</strong>：記為 $\mathcal{W}$，原點固定於地面，$z$ 軸向上。</li>
+  <li><strong>機體座標系（Body frame）</strong>：記為 $\mathcal{B}$，原點位於機體質心，$x$ 軸向前、$y$ 軸向左、$z$ 軸向上。</li>
+</ul>
+
+<p>定義以下狀態變數：</p>
+<table>
+  <tr><th>符號</th><th>維度</th><th>意義</th></tr>
+  <tr><td>$\mathbf{x}$</td><td>$\mathbb{R}^3$</td><td>世界座標系下的位置</td></tr>
+  <tr><td>$\mathbf{v}=\dot{\mathbf{x}}$</td><td>$\mathbb{R}^3$</td><td>世界座標系下的速度</td></tr>
+  <tr><td>$R$</td><td>$SO(3)$</td><td>從機體座標系到世界座標系的旋轉矩陣</td></tr>
+  <tr><td>$\boldsymbol{\Omega}$</td><td>$\mathbb{R}^3$</td><td>機體座標系下的角速度</td></tr>
+</table>
+
+<h3>1.2 牛頓-歐拉方程（Newton-Euler Equations）</h3>
+<p>四旋翼的動力學可由以下兩組方程描述：</p>
+
+<div class="math-block">
+$$ m\ddot{\mathbf{x}} = -f R \mathbf{e}_3 + m g \mathbf{e}_3 \tag{1.1} $$
+</div>
+
+<div class="math-block">
+$$ J \dot{\boldsymbol{\Omega}} = \boldsymbol{\Omega} \times J \boldsymbol{\Omega} + \mathbf{M} \tag{1.2} $$
+</div>
+
+<p>其中：</p>
+<ul>
+  <li>$m$：機體質量（Crazyflie 約 $0.027\,\text{kg}$）</li>
+  <li>$f \in \mathbb{R}$：四個旋翼產生的<strong>總推力</strong>（純量），方向沿機體 $z$ 軸</li>
+  <li>$\mathbf{M} \in \mathbb{R}^3$：機體座標系下的<strong>總力矩</strong></li>
+  <li>$J = \mathrm{diag}(J_x, J_y, J_z)$：慣性矩陣（Crazyflie 約 $J_x=16.57\times10^{-6}\,\text{kg}\cdot\text{m}^2$）</li>
+  <li>$g$：重力加速度</li>
+  <li>$\mathbf{e}_3 = [0,0,1]^\top$</li>
+</ul>
+
+<div class="note">
+<strong>物理意義：</strong> 方程式 (1.1) 表示世界座標系下的平移運動。推力 $f$ 始終沿機體 $z$ 軸（$R\mathbf{e}_3$），因此四旋翼是<strong>欠驅動系統（underactuated）</strong>：我們無法直接對 $x,y$ 方向施加獨立推力，只能透過改變機體姿態來間接控制水平加速度。
+</div>
+
+<h3>1.3 旋轉運動學（Rotational Kinematics）</h3>
+<p>旋轉矩陣 $R$ 的演化遵循：</p>
+<div class="math-block">
+$$ \dot{R} = R \, \hat{\boldsymbol{\Omega}} \tag{1.3} $$
+</div>
+<p>其中 $\hat{\boldsymbol{\Omega}} \in \mathfrak{so}(3)$ 為角速度 $\boldsymbol{\Omega}$ 的<strong>斜對稱矩陣（skew-symmetric matrix）</strong>：</p>
+<div class="math-block">
+$$ \hat{\boldsymbol{\Omega}} = \begin{bmatrix} 0 & -\Omega_z & \Omega_y \\ \Omega_z & 0 & -\Omega_x \\ -\Omega_y & \Omega_x & 0 \end{bmatrix} $$
+</div>
+
+<h3>1.4 控制輸入與馬達轉速</h3>
+<p>四旋翼有四個控制輸入：總推力 $f$ 與三軸力矩 $M_x, M_y, M_z$。這些由四個馬達轉速 $\Omega_i$ 決定：</p>
+<div class="math-block">
+$$ \begin{bmatrix} f \\ \tau_x \\ \tau_y \\ \tau_z \end{bmatrix} = \Gamma \begin{bmatrix} \Omega_1^2 \\ \Omega_2^2 \\ \Omega_3^2 \\ \Omega_4^2 \end{bmatrix}, \qquad \Gamma = \begin{bmatrix} k_T & k_T & k_T & k_T \\ -k_T l & k_T l & k_T l & -k_T l \\ -k_T l & -k_T l & k_T l & k_T l \\ -k_Q & k_Q & -k_Q & k_Q \end{bmatrix} \tag{1.4} $$
+</div>
+<p>其中 $k_T$ 為推力係數、$k_Q$ 為反扭矩係數、$l$ 為機臂長度。此矩陣 $\Gamma$ 即為 Crazyflie 韌體中的控制分配矩陣（見 <a href="#sec-alloc">第 8 節</a>）。</p>
+
+<h2 id="sec-coords">2. 座標系統與符號定義</h2>
+
+<p>在深入各控制器之前，先統一圖表與程式碼中的符號：</p>
+
+<table>
+  <tr><th>符號</th><th>圖表名稱</th><th>程式碼對應</th><th>說明</th></tr>
+  <tr><td>$\mathbf{x}_d$</td><td>desired position</td><td><code>setpointPos</code></td><td>期望位置</td></tr>
+  <tr><td>$\mathbf{v}_d$</td><td>desired velocity</td><td><code>setpointVel</code></td><td>期望速度</td></tr>
+  <tr><td>$\mathbf{a}_d$</td><td>desired acceleration</td><td><code>setpoint->acceleration</code></td><td>期望加速度（feed-forward）</td></tr>
+  <tr><td>$\mathbf{e}_x$</td><td>position error</td><td><code>r_error</code></td><td>位置誤差</td></tr>
+  <tr><td>$\mathbf{e}_v$</td><td>velocity error</td><td><code>v_error</code></td><td>速度誤差</td></tr>
+  <tr><td>$R$</td><td>current rotation</td><td><code>quat2rotmat(q)</code></td><td>當前旋轉矩陣</td></tr>
+  <tr><td>$R_d$</td><td>desired rotation</td><td><code>R_des</code></td><td>期望旋轉矩陣</td></tr>
+  <tr><td>$\boldsymbol{\Omega}$</td><td>body angular velocity</td><td><code>sensors->gyro</code></td><td>機體角速度</td></tr>
+  <tr><td>$\mathbf{e}_R$</td><td>attitude error</td><td><code>eR</code></td><td>姿態誤差（SO(3) 上）</td></tr>
+  <tr><td>$\mathbf{e}_\omega$</td><td>angular velocity error</td><td><code>ew / omega_error</code></td><td>角速度誤差</td></tr>
+  <tr><td>$f$</td><td>total thrust</td><td><code>control->thrust</code></td><td>總推力</td></tr>
+  <tr><td>$\mathbf{M}$</td><td>moment / torque</td><td><code>M / control->torque</code></td><td>力矩</td></tr>
+</table>
+
+<h2 id="sec-nd">3. <span class="badge b-nd">NDI</span> Nonlinear Dynamic Inversion</h2>
+
+<h3>3.1 核心思想</h3>
+<p>非線性動態逆控制（NDI）的核心是<strong>精確逆轉系統動態</strong>。假設我們已知完整的非線性模型：</p>
+<div class="math-block">
+$$ \ddot{\mathbf{x}} = \mathbf{f}(\mathbf{x}) + \mathbf{g}(\mathbf{x}) \mathbf{u} \tag{3.1} $$
+</div>
+<p>其中 $\mathbf{u}$ 為控制輸入。若 $\mathbf{g}(\mathbf{x})$ 可逆，則可設計：</p>
+<div class="math-block">
+$$ \mathbf{u} = \mathbf{g}^{-1}(\mathbf{x}) \bigl( \boldsymbol{\nu} - \mathbf{f}(\mathbf{x}) \bigr) \tag{3.2} $$
+</div>
+<p>代入後得到線性化的閉迴路系統 $\ddot{\mathbf{x}} = \boldsymbol{\nu}$。接著對虛擬控制（virtual control）$\boldsymbol{\nu}$ 設計線性控制器：</p>
+<div class="math-block">
+$$ \boldsymbol{\nu} = \ddot{\mathbf{x}}_d + k_v \mathbf{e}_v + k_x \mathbf{e}_x \tag{3.3} $$
+</div>
+<p>其中 $\mathbf{e}_x = \mathbf{x}_d - \mathbf{x}$、$\mathbf{e}_v = \dot{\mathbf{x}}_d - \dot{\mathbf{x}}$。</p>
+
+<div class="note">
+<strong>優點：</strong> 非線性被精確抵消，閉迴路成為線性系統，便於分析穩定性。<br>
+<strong>缺點：</strong> 需要精確的 $\mathbf{f}(\mathbf{x})$ 與 $\mathbf{g}(\mathbf{x})$；對模型誤差與外部擾動敏感。
+</div>
+
+<h3>3.2 四旋翼上的 NDI 設計步驟</h3>
+
+<h4>步驟 ①：虛擬控制（Desired Acceleration）</h4>
+<div class="math-block">
+$$ \boldsymbol{\nu} = \ddot{\mathbf{x}}_d + k_v \mathbf{e}_v + k_x \mathbf{e}_x $$
+</div>
+
+<h4>步驟 ②：總推力（Total Thrust）</h4>
+<p>由於推力需補償重力，虛擬控制中已內含重力補償：</p>
+<div class="math-block">
+$$ f = m \| \boldsymbol{\nu} + g \mathbf{e}_3 \| \tag{3.4} $$
+</div>
+
+<h4>步驟 ③：期望機體 $z$ 軸（Desired Rotation）</h4>
+<div class="math-block">
+$$ \mathbf{z}_B^d = \frac{\boldsymbol{\nu} + g \mathbf{e}_3}{\| \boldsymbol{\nu} + g \mathbf{e}_3 \|} \tag{3.5} $$
+</div>
+<p>再根據期望偏航角 $\psi_d$ 建構完整的 $R_d$。</p>
+
+<h4>步驟 ④：姿態誤差與力矩</h4>
+<p>定義角速度誤差 $\mathbf{e}_\omega = \boldsymbol{\omega}_d - \boldsymbol{\omega}$，並設計虛擬角加速度：</p>
+<div class="math-block">
+$$ \boldsymbol{\nu}_\omega = \dot{\boldsymbol{\omega}}_d + k_\omega \mathbf{e}_\omega $$
+</div>
+<p>再透過動態逆轉求得力矩：</p>
+<div class="math-block">
+$$ \boldsymbol{\tau} = J \boldsymbol{\nu}_\omega + \boldsymbol{\omega} \times J \boldsymbol{\omega} \tag{3.6} $$
+</div>
+<p>此處明確抵消了陀螺力矩項（gyroscopic term）。</p>
+
+<h3>3.3 與韌體的對應</h3>
+<p>雖然 Crazyflie 韌體未直接提供獨立的 NDI 控制器檔案，但 Mellinger 與 Lee 控制器中的位置環與姿態環設計均吸收了 NDI 的思想。例如 <code>controller_mellinger.c</code> 中的虛擬推力計算：</p>
+
+<pre><code class="language-c">// Desired thrust [F_des]
+target_thrust.x = self->mass * setpoint->acceleration.x
+                + self->kp_xy * r_error.x + self->kd_xy * v_error.x + self->ki_xy * self->i_error_x;
+target_thrust.y = self->mass * setpoint->acceleration.y
+                + self->kp_xy * r_error.y + self->kd_xy * v_error.y + self->ki_xy * self->i_error_y;
+target_thrust.z = self->mass * (setpoint->acceleration.z + GRAVITY_MAGNITUDE)
+                + self->kp_z  * r_error.z + self->kd_z  * v_error.z + self->ki_z  * self->i_error_z;
+</code></pre>
+
+<p>這正是公式 (3.3) 的實作，其中 <code>target_thrust</code> 即為 $m\boldsymbol{\nu}$。</p>
+
+<h2 id="sec-indi">4. <span class="badge b-indi">INDI</span> Incremental Nonlinear Dynamic Inversion</h2>
+
+<h3>4.1 核心思想</h3>
+<p>增量非線性動態逆控制（INDI）是 NDI 的實用化改進。它不需要完整的模型 $\mathbf{f}(\mathbf{x})$，而是利用<strong>感測器即時量測</strong>來估計當前狀態的變化率，僅對控制輸入做<strong>增量（incremental）</strong>修正。</p>
+<p>在操作點 $\mathbf{x}_0$ 附近線性化：</p>
+<div class="math-block">
+$$ \ddot{\mathbf{x}} \approx \ddot{\mathbf{x}}_0 + \mathbf{B} \, \Delta \mathbf{u}, \qquad \mathbf{B} = \mathbf{g}(\mathbf{x}_0) \tag{4.1} $$
+</div>
+<p>其中 $\ddot{\mathbf{x}}_0$ 可由 IMU（加速度計 + 陀螺儀微分）量測得到。設定期望的虛擬加速度 $\boldsymbol{\nu}_d$ 後，控制增量為：</p>
+<div class="math-block">
+$$ \Delta \mathbf{u} = \mathbf{B}^{-1} \bigl( \boldsymbol{\nu}_d - \ddot{\mathbf{x}}_{\text{meas}} \bigr) \tag{4.2} $$
+</div>
+<div class="math-block">
+$$ \mathbf{u} = \mathbf{u}_0 + \Delta \mathbf{u} \tag{4.3} $$
+</div>
+
+<div class="note">
+<strong>優點：</strong> 不需要精確的動態模型；對擾動與模型誤差具有強健性；天然適合與 IMU 融合。<br>
+<strong>缺點：</strong> 需要高更新率與低延遲的感測器；控制效率矩陣 $\mathbf{B}$（控制導數）仍需標定。
+</div>
+
+<h3>4.2 INDI 姿態環設計（Crazyflie 實作）</h3>
+<p>在 <code>controller_indi.c</code> 中，INDI 主要用於<strong>姿態角速度環</strong>。外環（位置環）可選擇傳統 PID 或 INDI（<code>outerLoopActive</code>）。</p>
+
+<h4>步驟 ①：濾波與微分</h4>
+<p>對陀螺儀量測與上一時刻的控制指令分別進行 Butterworth 低通濾波，再透過有限差分計算角加速度：</p>
+<pre><code class="language-c">// 1. Update the gyro filter with the new measurements
+body_rates.p = radians(sensors->gyro.x);
+body_rates.q = -radians(sensors->gyro.y); // CF coords -> NED
+body_rates.r = -radians(sensors->gyro.z);
+filter_pqr(indi.rate, &body_rates);
+
+// 2. Calculate the derivative with finite difference
+finite_difference_from_filter(indi.rate_d, indi.rate);
+
+// 3. Same filter on the actuators
+filter_pqr(indi.u, &indi.u_act_dyn);
+</code></pre>
+
+<h4>步驟 ②：參考角加速度（Reference Angular Acceleration）</h4>
+<p>先由姿態誤差經 P 控制得到期望角速度，再經 D 控制得到期望角加速度：</p>
+<pre><code class="language-c">float attitude_error_p = rateDesired.roll - body_rates.p;
+float attitude_error_q = rateDesired.pitch - body_rates.q;
+float attitude_error_r = rateDesired.yaw - body_rates.r;
+
+indi.angular_accel_ref.p = indi.reference_acceleration.rate_p * attitude_error_p;
+indi.angular_accel_ref.q = indi.reference_acceleration.rate_q * attitude_error_q;
+indi.angular_accel_ref.r = indi.reference_acceleration.rate_r * attitude_error_r;
+</code></pre>
+
+<h4>步驟 ③：增量逆轉（Incremental Inversion）</h4>
+<div class="math-block">
+$$ \Delta u_p = \frac{1}{g_{1,p}} \bigl( \dot{\Omega}_{p,\text{ref}} - \dot{\Omega}_{p,\text{meas}} \bigr) $$
+</div>
+<p>對於偏航軸，需額外考慮馬達轉子慣量造成的角加速度（$g_2$ 項）：</p>
+<div class="math-block">
+$$ \Delta u_r = \frac{1}{g_{1,r} + g_2} \bigl( \dot{\Omega}_{r,\text{ref}} - \dot{\Omega}_{r,\text{meas}} + g_2 \Delta u_r \bigr) $$
+</div>
+
+<pre><code class="language-c">indi.du.p = 1.0f / indi.g1.p * (indi.angular_accel_ref.p - indi.rate_d[0]);
+indi.du.q = 1.0f / indi.g1.q * (indi.angular_accel_ref.q - indi.rate_d[1]);
+indi.du.r = 1.0f / (indi.g1.r + indi.g2)
+          * (indi.angular_accel_ref.r - indi.rate_d[2] + indi.g2 * indi.du.r);
+</code></pre>
+
+<h4>步驟 ④：控制更新與飽和</h4>
+<pre><code class="language-c">indi.u_in.p = indi.u[0].o[0] + indi.du.p;  // u0 + Δu
+indi.u_in.p = clamp(indi.u_in.p, -bound_control_input, bound_control_input);
+
+// Propagate input filters (first-order actuator dynamics)
+indi.u_act_dyn.p += indi.act_dyn.p * (indi.u_in.p - indi.u_act_dyn.p);
+</code></pre>
+
+<div class="warn">
+<strong>注意：</strong> 當推力低於閾值（<code>thrust_threshold = 300</code>）時，控制器會重置所有狀態，避免在地面時積分器飽和。
+</div>
+
+<h2 id="sec-mel">5. <span class="badge b-mel">Mellinger</span> Differential Flatness / Min-Snap</h2>
+
+<h3>5.1 核心思想</h3>
+<p>Mellinger 控制器基於 <strong>Differential Flatness（微分平坦性）</strong>。對於四旋翼，平坦輸出（flat output）可選為：</p>
+<div class="math-block">
+$$ \boldsymbol{\sigma} = [x,\; y,\; z,\; \psi]^\top \tag{5.1} $$
+</div>
+<p>這意味著<strong>所有狀態與輸入</strong>（位置、速度、姿態、角速度、推力、力矩）都可以由 $\boldsymbol{\sigma}$ 及其有限階導數（直到四階）解析地表達出來。因此，只要生成一條平滑的 $\boldsymbol{\sigma}(t)$ 軌跡，就能唯一確定對應的控制指令。</p>
+
+<div class="note">
+<strong>Minimum Snap（最小四階導數）</strong>：在生成軌跡時，通常最小化位置對時間的四階導數（snap），因為馬達轉速與推力成正比，而推力的變化率對應到 snap，可得到最「平滑」且馬達可執行的軌跡。
+</div>
+
+<h3>5.2 控制器設計</h3>
+
+<h4>步驟 ①：位置與速度誤差</h4>
+<div class="math-block">
+$$ \mathbf{e}_p = \mathbf{x} - \mathbf{x}_T, \qquad \mathbf{e}_v = \dot{\mathbf{x}} - \dot{\mathbf{x}}_T $$
+</div>
+<p>注意符號慣例與 NDI/Lee 相反（此處為 $x - x_T$）。</p>
+
+<h4>步驟 ②：期望加速度（Desired Acceleration）</h4>
+<div class="math-block">
+$$ \mathbf{a}_d = \ddot{\mathbf{x}}_T - k_p \mathbf{e}_p - k_d \mathbf{e}_v - k_i \int \mathbf{e}_p \, dt \tag{5.2} $$
+</div>
+<p>其中 $\ddot{\mathbf{x}}_T$ 來自 min-snap 軌跡的 feed-forward。</p>
+
+<h4>步驟 ③：總推力</h4>
+<div class="math-block">
+$$ f = m \| \mathbf{a}_d + g \mathbf{e}_3 \| \tag{5.3} $$
+</div>
+
+<h4>步驟 ④：期望旋轉矩陣 $R_d$</h4>
+<div class="math-block">
+$$ \mathbf{z}_B = \frac{\mathbf{a}_d + g \mathbf{e}_3}{\| \mathbf{a}_d + g \mathbf{e}_3 \|}, \qquad \mathbf{x}_C = [\cos\psi_T,\; \sin\psi_T,\; 0]^\top $$
+</div>
+<div class="math-block">
+$$ \mathbf{y}_B = \frac{\mathbf{z}_B \times \mathbf{x}_C}{\| \mathbf{z}_B \times \mathbf{x}_C \|}, \qquad \mathbf{x}_B = \mathbf{y}_B \times \mathbf{z}_B $$
+</div>
+<div class="math-block">
+$$ R_d = \begin{bmatrix} \mathbf{x}_B & \mathbf{y}_B & \mathbf{z}_B \end{bmatrix} \tag{5.4} $$
+</div>
+
+<h4>步驟 ⑤：姿態誤差</h4>
+<p>使用旋轉矩陣定義的幾何誤差（避免歐拉角奇異點）：</p>
+<div class="math-block">
+$$ \mathbf{e}_R = \frac{1}{2} \bigl( R_d^\top R - R^\top R_d \bigr)^\vee \tag{5.5} $$
+</div>
+<div class="math-block">
+$$ \mathbf{e}_\omega = \boldsymbol{\omega} - R^\top R_d \boldsymbol{\omega}_d \tag{5.6} $$
+</div>
+<p>其中 $(\cdot)^\vee$ 為斜對稱矩陣的軸向量映射（vee map）。</p>
+
+<h4>步驟 ⑥：力矩指令</h4>
+<div class="math-block">
+$$ \boldsymbol{\tau} = J \bigl( \dot{\boldsymbol{\omega}}_d - k_R \mathbf{e}_R - k_\omega \mathbf{e}_\omega \bigr) + \boldsymbol{\omega} \times J \boldsymbol{\omega} \tag{5.7} $$
+</div>
+<p>第三項 $\boldsymbol{\omega} \times J \boldsymbol{\omega}$ 為陀螺力矩補償，來自平坦性推導的 feed-forward。</p>
+
+<h3>5.3 與韌體的對應（controller_mellinger.c）</h3>
+
+<h4>位置環</h4>
+<pre><code class="language-c">// Position Error (ep)
+r_error = vsub(setpointPos, statePos);
+v_error = vsub(setpointVel, stateVel);
+
+// Integral Error (clamped)
+self->i_error_x += r_error.x * dt;
+self->i_error_x = clamp(self->i_error_x, -self->i_range_xy, self->i_range_xy);
+
+// Desired thrust [F_des] = mass * acc + PID
+if (setpoint->mode.x == modeAbs) {
+    target_thrust.x = self->mass * setpoint->acceleration.x
+                    + self->kp_xy * r_error.x + self->kd_xy * v_error.x + self->ki_xy * self->i_error_x;
+    target_thrust.y = self->mass * setpoint->acceleration.y
+                    + self->kp_xy * r_error.y + self->kd_xy * v_error.y + self->ki_xy * self->i_error_y;
+    target_thrust.z = self->mass * (setpoint->acceleration.z + GRAVITY_MAGNITUDE)
+                    + self->kp_z  * r_error.z + self->kd_z  * v_error.z + self->ki_z  * self->i_error_z;
+}
+</code></pre>
+
+<h4>期望 $z$ 軸與旋轉矩陣建構</h4>
+<pre><code class="language-c">self->z_axis_desired = vnormalize(target_thrust);
+
+// [xC_des] from desired yaw
+x_c_des.x = cosf(radians(desiredYaw));
+x_c_des.y = sinf(radians(desiredYaw));
+x_c_des.z = 0;
+
+// [yB_des] = zB_des x xC_des
+y_axis_desired = vnormalize(vcross(self->z_axis_desired, x_c_des));
+// [xB_des] = yB_des x zB_des
+x_axis_desired = vcross(y_axis_desired, self->z_axis_desired);
+</code></pre>
+
+<h4>姿態誤差 $e_R$（快速解析版本）</h4>
+<p>韌體中使用 Mathematica 生成的解析式直接由四元數計算 $e_R$，避免完整的矩陣運算：</p>
+<pre><code class="language-c">float x = q.x, y = q.y, z = q.z, w = q.w;
+eR.x = (-1 + 2*fsqr(x) + 2*fsqr(y))*y_axis_desired.z + ...;
+eR.y = x_axis_desired.z - self->z_axis_desired.x - 2*(...);
+eR.z = y_axis_desired.x - 2*(...);
+eR.y = -eR.y; // Crazyflie coordinate system correction
+</code></pre>
+
+<h4>角速度誤差與力矩</h4>
+<pre><code class="language-c">// [ew]
+ew.x = radians(setpoint->attitudeRate.roll) - stateAttitudeRateRoll;
+ew.y = -radians(setpoint->attitudeRate.pitch) - stateAttitudeRatePitch;
+ew.z = radians(setpoint->attitudeRate.yaw) - stateAttitudeRateYaw;
+
+// Moment
+M.x = -self->kR_xy * eR.x + self->kw_xy * ew.x + self->ki_m_xy * self->i_error_m_x + self->kd_omega_rp * err_d_roll;
+M.y = -self->kR_xy * eR.y + self->kw_xy * ew.y + self->ki_m_xy * self->i_error_m_y + self->kd_omega_rp * err_d_pitch;
+M.z = -self->kR_z  * eR.z + self->kw_z  * ew.z + self->ki_m_z  * self->i_error_m_z;
+</code></pre>
+
+<div class="note">
+<strong>韌體擴充：</strong> 相較於原始 Mellinger (ICRA 2011) 論文，Crazyflie 實作額外加入了：<br>
+• 位置與姿態的積分項（補償電池壓降、質心偏移、螺旋槳磨損）<br>
+• 角速度的 D 項（<code>kd_omega_rp</code>）<br>
+• 支援純姿態手動飛行模式
+</div>
+
+<h2 id="sec-lee">6. <span class="badge b-lee">Lee</span> Geometric Control on SE(3)</h2>
+
+<h3>6.1 核心思想</h3>
+<p>Lee 控制器由 Taeyoung Lee 等人於 CDC 2010 提出，直接在<strong>特殊歐氏群 SE(3)</strong> 上設計控制律。與歐拉角或四元數參數化不同，SE(3) 控制律是<strong>全局定義</strong>的，避免了歐拉角的萬向鎖奇異點，並具有<strong>幾乎全局漸近穩定性（almost-global asymptotic stability）</strong>。</p>
+
+<h3>6.2 控制器設計</h3>
+
+<h4>步驟 ①：位置誤差與期望總力</h4>
+<p>定義誤差（注意符號慣例：$\mathbf{e}_x = \mathbf{x} - \mathbf{x}_d$）：</p>
+<div class="math-block">
+$$ \mathbf{F}_d = -k_x \mathbf{e}_x - k_v \mathbf{e}_v + m g \mathbf{e}_3 + m \ddot{\mathbf{x}}_d \tag{6.1} $$
+</div>
+<p>此式為期望的<strong>總力向量</strong>，同時包含重力補償、回授與前饋。</p>
+
+<h4>步驟 ②：總推力</h4>
+<p>總推力為 $\mathbf{F}_d$ 投影到當前機體 $z$ 軸：</p>
+<div class="math-block">
+$$ f = \mathbf{F}_d \cdot R \mathbf{e}_3 \tag{6.2} $$
+</div>
+
+<h4>步驟 ③：期望旋轉矩陣 $R_d$</h4>
+<p>先決定期望的機體 $z$ 軸：</p>
+<div class="math-block">
+$$ \mathbf{b}_{3d} = \frac{\mathbf{F}_d}{\|\mathbf{F}_d\|} \tag{6.3} $$
+</div>
+<p>再根據期望航向 $\mathbf{b}_{1c}$（由偏航角決定）建構完整的正交基：</p>
+<div class="math-block">
+$$ \mathbf{b}_{2d} = \frac{\mathbf{b}_{3d} \times \mathbf{b}_{1c}}{\|\mathbf{b}_{3d} \times \mathbf{b}_{1c}\|}, \qquad \mathbf{b}_{1d} = \mathbf{b}_{2d} \times \mathbf{b}_{3d} \tag{6.4} $$
+</div>
+<div class="math-block">
+$$ R_d = \begin{bmatrix} \mathbf{b}_{1d} & \mathbf{b}_{2d} & \mathbf{b}_{3d} \end{bmatrix} $$
+</div>
+
+<h4>步驟 ④：姿態誤差（SO(3) 上）</h4>
+<div class="math-block">
+$$ \mathbf{e}_R = \frac{1}{2} \bigl( R_d^\top R - R^\top R_d \bigr)^\vee \tag{6.5} $$
+</div>
+<div class="math-block">
+$$ \mathbf{e}_\Omega = \boldsymbol{\Omega} - R^\top R_d \boldsymbol{\Omega}_d \tag{6.6} $$
+</div>
+<p>此處 $\mathbf{e}_\Omega$ 為<strong>內在誤差（intrinsic error）</strong>，定義在機體座標系上。</p>
+
+<h4>步驟 ⑤：期望角速度 $\boldsymbol{\Omega}_d$ 與 feed-forward</h4>
+<p>Lee 控制器的關鍵特色是包含了軌跡的<strong>jerk（三階導數）</strong>與<strong>snap（四階導數）</strong>前饋。定義：</p>
+<div class="math-block">
+$$ \mathbf{h}_\omega = \frac{m}{f} \Bigl( \dot{\mathbf{j}}_d - (\mathbf{z}_d \cdot \dot{\mathbf{j}}_d) \mathbf{z}_d \Bigr) \tag{6.7} $$
+</div>
+<p>其中 $\dot{\mathbf{j}}_d$ 為期望 jerk。則期望角速度為：</p>
+<div class="math-block">
+$$ \boldsymbol{\Omega}_d = \begin{bmatrix} -\mathbf{h}_\omega \cdot \mathbf{y}_d \\ \mathbf{h}_\omega \cdot \mathbf{x}_d \\ \dot{\psi}_d \, (\mathbf{z}_d \cdot \mathbf{e}_3) \end{bmatrix} \tag{6.8} $$
+</div>
+
+<h4>步驟 ⑥：力矩指令</h4>
+<div class="math-block">
+$$ \mathbf{M} = -k_R \mathbf{e}_R - k_\Omega \mathbf{e}_\Omega + \boldsymbol{\Omega} \times J \boldsymbol{\Omega} - J \bigl( \hat{\boldsymbol{\Omega}} R^\top R_d \boldsymbol{\Omega}_d - R^\top R_d \dot{\boldsymbol{\Omega}}_d \bigr) \tag{6.9} $$
+</div>
+<p>最後一項為完整的軌跡前饋（包含 $\dot{\boldsymbol{\Omega}}_d$），這是與 Mellinger 控制器的主要差異之一。</p>
+
+<h3>6.3 與韌體的對應（controller_lee.c）</h3>
+
+<h4>位置環與期望總力</h4>
+<pre><code class="language-c">struct vec pos_e = vclampscl(vsub(pos_d, statePos), -self->Kpos_P_limit, self->Kpos_P_limit);
+struct vec vel_e = vclampscl(vsub(vel_d, stateVel), -self->Kpos_D_limit, self->Kpos_D_limit);
+self->i_error_pos = vadd(self->i_error_pos, vscl(dt, pos_e));
+
+struct vec F_d = vadd4(
+    acc_d,
+    veltmul(self->Kpos_D, vel_e),
+    veltmul(self->Kpos_P, pos_e),
+    veltmul(self->Kpos_I, self->i_error_pos));
+
+// Thrust = projection onto current body z-axis
+control->thrustSi = self->mass * vdot(F_d, mvmul(R, z));
+</code></pre>
+
+<h4>期望旋轉矩陣建構</h4>
+<pre><code class="language-c">struct vec zdes = vnormalize(F_d);
+struct vec xcdes = mkvec(cosf(desiredYaw), sinf(desiredYaw), 0);
+struct vec zcrossx = vcross(zdes, xcdes);
+float normZX = vmag(zcrossx);
+
+if (normZX > 0) {
+    ydes = vnormalize(zcrossx);
+}
+xdes = vcross(ydes, zdes);
+self->R_des = mcolumns(xdes, ydes, zdes);
+</code></pre>
+
+<h4>姿態誤差 $e_R$</h4>
+<pre><code class="language-c">struct mat33 eRM = msub(mmul(mtranspose(self->R_des), R), mmul(mtranspose(R), self->R_des));
+struct vec eR = vscl(0.5f, mkvec(eRM.m[2][1], eRM.m[0][2], eRM.m[1][0]));
+</code></pre>
+
+<h4>角速度前饋與力矩</h4>
+<pre><code class="language-c">// Compute desired omega with jerk feedforward
+struct vec desJerk = mkvec(setpoint->jerk.x, setpoint->jerk.y, setpoint->jerk.z);
+if (control->thrustSi != 0) {
+    struct vec tmp = vsub(desJerk, vscl(vdot(zdes, desJerk), zdes));
+    hw = vscl(self->mass / control->thrustSi, tmp);
+}
+float desiredYawRate = radians(setpoint->attitudeRate.yaw) * vdot(zdes, z_w);
+struct vec omega_des = mkvec(-vdot(hw, ydes), vdot(hw, xdes), desiredYawRate);
+
+self->omega_r = mvmul(mmul(mtranspose(R), self->R_des), omega_des);
+struct vec omega_error = vsub(self->omega, self->omega_r);
+
+// M = -kR eR - kw ew - KI*i_err + w x Jw
+self->u = vadd4(
+    vneg(veltmul(self->KR, eR)),
+    vneg(veltmul(self->Komega, omega_error)),
+    vneg(veltmul(self->KI, self->i_error_att)),
+    vcross(self->omega, veltmul(self->J, self->omega)));
+
+control->controlMode = controlModeForceTorque;
+control->torque[0] = self->u.x;
+control->torque[1] = self->u.y;
+control->torque[2] = self->u.z;
+</code></pre>
+
+<div class="warn">
+<strong>注意：</strong> 當前 Crazyflie 的 <code>controller_lee.c</code> 實作中，力矩公式 (6.9) 的最後一項前饋（$-J(\hat{\Omega}R^\top R_d \Omega_d - R^\top R_d \dot{\Omega}_d)$）尚未完整加入，但架構已保留擴充空間。
+</div>
+
+<h2 id="sec-pid">7. PID 基礎與實作（pid.c）</h2>
+
+<h3>7.1 標準 PID 結構</h3>
+<p>Crazyflie 的底層 PID（<code>pid.c</code>）是許多控制器的基礎元件。其連續時間形式為：</p>
+<div class="math-block">
+$$ u(t) = K_p e(t) + K_i \int_0^t e(\tau)\,d\tau + K_d \frac{de(t)}{dt} + K_{ff} r(t) \tag{7.1} $$
+</div>
+<p>其中 $r(t)$ 為參考輸入（feed-forward）。</p>
+
+<h3>7.2 離散化實作</h3>
+<p>在韌體中，積分使用累加器、微分使用向後差分。特別值得注意的是微分項的實作方式：</p>
+
+<div class="note">
+<strong>Derivative on Measurement（避免 Derivative Kick）：</strong><br>
+微分項計算的是<strong>測量值的變化率</strong>而非誤差的變化率：
+$$ D = -K_d \frac{d}{dt}(\text{measured}) $$
+這樣當設定點（setpoint）突然改變時，不會因誤差瞬間跳變而產生巨大的微分衝擊（derivative kick）。
+</div>
+
+<pre><code class="language-c">float delta = -(measured - pid->prevMeasured);  // derivative on measurement
+pid->deriv = delta / pid->dt;
+pid->outD = pid->kd * pid->deriv;
+</code></pre>
+
+<h3>7.3 偏航角特殊處理</h3>
+<p>偏航角具有 $360^\circ$ 週期性，因此誤差與差分都需要做角度歸一化：</p>
+<pre><code class="language-c">if (isYawAngle) {
+    if (pid->error > 180.0f) pid->error -= 360.0f;
+    else if (pid->error < -180.0f) pid->error += 360.0f;
+    // 同樣處理 delta
+}
+</code></pre>
+
+<h3>7.4 低通濾波（D-term Filtering）</h3>
+<p>微分會放大高頻雜訊，因此可選擇對 D-term 或整體輸出進行二階低通濾波（<code>lpf2p</code>）：</p>
+<pre><code class="language-c">#if CONFIG_CONTROLLER_PID_FILTER_ALL
+    output = lpf2pApply(&pid->dFilter, output);  // 濾波整體輸出
+#else
+    if (pid->enableDFilter) {
+        pid->deriv = lpf2pApply(&pid->dFilter, delta / pid->dt);
+    }
+#endif
+</code></pre>
+
+<h2 id="sec-alloc">8. 控制分配（Control Allocation）</h2>
+
+<p>四旋翼有 <strong>4 個馬達</strong>但僅有 <strong>4 個控制需求</strong>（總推力 $f$ 與三軸力矩 $\tau_x, \tau_y, \tau_z$），因此控制分配是一個可逆的線性映射。在 Crazyflie 中，此映射發生在電源分配模組（power distribution），各控制器最終輸出統一的 <code>control_t</code> 結構。</p>
+
+<div class="math-block">
+$$ \begin{bmatrix} f \\ \tau_x \\ \tau_y \\ \tau_z \end{bmatrix} = \underbrace{\begin{bmatrix} k_T & k_T & k_T & k_T \\ -k_T l & k_T l & k_T l & -k_T l \\ -k_T l & -k_T l & k_T l & k_T l \\ -k_Q & k_Q & -k_Q & k_Q \end{bmatrix}}_{\displaystyle \Gamma} \begin{bmatrix} \Omega_1^2 \\ \Omega_2^2 \\ \Omega_3^2 \\ \Omega_4^2 \end{bmatrix} \tag{8.1} $$
+</div>
+
+<p>其中馬達編號採用 X 構型（Crazyflie 標準），1 與 3 為逆時針（CCW），2 與 4 為順時針（CW）。透過求 $\Gamma^{-1}$ 即可由期望的 $[f, \tau_x, \tau_y, \tau_z]^\top$ 解得各馬達轉速指令。</p>
+
+<div class="card">
+<strong>各控制器輸出格式對照</strong>
+<table>
+  <tr><th>控制器</th><th>輸出模式</th><th>說明</th></tr>
+  <tr><td>PID / Mellinger / INDI</td><td><code>controlModeLegacy</code></td><td>輸出 <code>thrust</code>（整數）與 <code>roll/pitch/yaw</code>（整數，對應力矩）</td></tr>
+  <tr><td>Lee</td><td><code>controlModeForceTorque</code></td><td>輸出 <code>thrustSi</code>（牛頓）與 <code>torque[3]</code>（牛頓米）</td></tr>
+</table>
+</div>
+
+<h2 id="sec-compare">9. 方法比較總表</h2>
+
+<table>
+  <tr>
+    <th>特性</th>
+    <th><span class="badge b-nd">NDI</span></th>
+    <th><span class="badge b-indi">INDI</span></th>
+    <th><span class="badge b-mel">Mellinger</span></th>
+    <th><span class="badge b-lee">Lee</span></th>
+  </tr>
+  <tr>
+    <td><strong>模型需求</strong></td>
+    <td>完整模型 $f, g$</td>
+    <td>僅需控制效率 $B$</td>
+    <td>微分平坦性模型</td>
+    <td>剛體動力學</td>
+  </tr>
+  <tr>
+    <td><strong>回授變數</strong></td>
+    <td>位置、速度、姿態</td>
+    <td>角速度、加速度（IMU）</td>
+    <td>位置、速度、姿態</td>
+    <td>位置、速度、姿態</td>
+  </tr>
+  <tr>
+    <td><strong>前饋能力</strong></td>
+    <td>加速度</td>
+    <td>有限</td>
+    <td>加速度（軌跡生成）</td>
+    <td>加速度、jerk、snap</td>
+  </tr>
+  <tr>
+    <td><strong>姿態表示</strong></td>
+    <td>旋轉矩陣 / 歐拉角</td>
+    <td>歐拉角 / 角速度</td>
+    <td>旋轉矩陣</td>
+    <td>旋轉矩陣（SE(3)）</td>
+  </tr>
+  <tr>
+    <td><strong>奇異點</strong></td>
+    <td>歐拉角時存在</td>
+    <td>無（角速度層級）</td>
+    <td>無（旋轉矩陣）</td>
+    <td>無（全局定義）</td>
+  </tr>
+  <tr>
+    <td><strong>穩定性保證</strong></td>
+    <td>局部指數穩定</td>
+    <td>實務強健</td>
+    <td>局部指數穩定</td>
+    <td>幾乎全局漸近穩定</td>
+  </tr>
+  <tr>
+    <td><strong>主要優勢</strong></td>
+    <td>直觀、線性化閉迴路</td>
+    <td>強健、低模型依賴</td>
+    <td>軌跡追蹤精準</td>
+    <td>數學嚴謹、全局穩定</td>
+  </tr>
+  <tr>
+    <td><strong>主要劣勢</strong></td>
+    <td>模型誤差敏感</td>
+    <td>感測器延遲敏感</td>
+    <td>計算量較大</td>
+    <td>計算量最大</td>
+  </tr>
+  <tr>
+    <td><strong>Crazyflie 檔案</strong></td>
+    <td>概念融入各控制器</td>
+    <td><code>controller_indi.c</code></td>
+    <td><code>controller_mellinger.c</code></td>
+    <td><code>controller_lee.c</code></td>
+  </tr>
+</table>
+
+<h2 id="sec-ref">10. 參考文獻與延伸閱讀</h2>
+
+<ol>
+  <li><strong>Mellinger, D. & Kumar, V.</strong> (2011). Minimum snap trajectory generation and control for quadrotors. <em>IEEE ICRA</em>.</li>
+  <li><strong>Lee, T., Leok, M. & McClamroch, N. H.</strong> (2010). Geometric Tracking Control of a Quadrotor UAV on SE(3). <em>IEEE CDC</em>.</li>
+  <li><strong>Smeur, E. J. J., Chu, Q. P. & de Croon, G. C. H. E.</strong> (2016). Adaptive Incremental Nonlinear Dynamic Inversion for Attitude Control of Micro Aerial Vehicles. <em>Journal of Guidance, Control, and Dynamics</em>.</li>
+  <li><strong>Foerster, J.</strong> (2015). System Identification of the Crazyflie 2.0 Nano Quadrocopter. <em>BA Thesis, ETH Zurich</em>.</li>
+  <li><strong>Crazyflie Firmware</strong>. <a href="https://github.com/bitcraze/crazyflie-firmware" target="_blank">https://github.com/bitcraze/crazyflie-firmware</a></li>
+</ol>
+
+<footer>
+  教學文件產生日期：2026-08-16 · 基於 Crazyflie 開源韌體與附圖方程式整理
+</footer>
+
+</div>
+</body>
+</html>
