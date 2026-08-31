@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32F405 + BMI088 串級 PID 飛控系統：中斷同步、雜訊濾波與頻寬裕度分析</title>
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['\\[', '\\]']],
+    tags: 'ams'
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js" id="MathJax-script"></script>
+<style>
+  :root{
+    --ink:#1a1a1a;
+    --sub:#4a4a4a;
+    --rule:#cfcfcf;
+    --rule-dark:#8a8a8a;
+    --bg:#fdfdfb;
+    --panel:#f4f3ef;
+    --accent:#7a1f1f;
+    --code-bg:#f2f1ec;
+    --confirmed:#1f5c3a;
+    --representative:#8a5a00;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family: "Noto Serif TC", "Songti TC", "PMingLiU", "Times New Roman", serif;
+    line-height:1.85;
+    font-size:16.5px;
+  }
+  .layout{
+    display:grid;
+    grid-template-columns: 250px minmax(0,880px);
+    justify-content:center;
+    gap:48px;
+    max-width:1200px;
+    margin:0 auto;
+    padding:40px 24px 120px;
+  }
+  nav.toc{
+    position:sticky;
+    top:24px;
+    align-self:start;
+    font-size:13.5px;
+    color:var(--sub);
+    border-right:1px solid var(--rule);
+    padding-right:18px;
+    max-height:92vh;
+    overflow-y:auto;
+  }
+  nav.toc .toc-title{
+    font-weight:700;
+    color:var(--ink);
+    font-size:13px;
+    letter-spacing:.08em;
+    margin-bottom:10px;
+    text-transform:uppercase;
+  }
+  nav.toc ol{list-style:none;margin:0;padding:0;}
+  nav.toc li{margin:5px 0;}
+  nav.toc a{color:var(--sub);text-decoration:none;}
+  nav.toc a:hover{color:var(--accent);text-decoration:underline;}
+  nav.toc .lvl2{padding-left:14px;font-size:12.5px;}
+
+  header.title-block{
+    border-bottom: 2px solid var(--ink);
+    padding-bottom:22px;
+    margin-bottom:36px;
+  }
+  header.title-block h1{
+    font-size:26px;
+    line-height:1.5;
+    margin:0 0 10px;
+    font-weight:700;
+  }
+  header.title-block .subtitle{
+    font-size:15px;
+    color:var(--sub);
+    margin:0 0 14px;
+  }
+  header.title-block .meta{
+    font-size:13px;
+    color:var(--sub);
+    display:flex;
+    gap:22px;
+    flex-wrap:wrap;
+  }
+
+  section{margin-bottom:52px;}
+  h2{
+    font-size:21px;
+    border-bottom:1px solid var(--rule-dark);
+    padding-bottom:8px;
+    margin:0 0 20px;
+    scroll-margin-top:20px;
+  }
+  h3{
+    font-size:17.5px;
+    margin:30px 0 12px;
+    color:var(--ink);
+    scroll-margin-top:20px;
+  }
+  h4{
+    font-size:15.5px;
+    margin:22px 0 10px;
+    color:var(--sub);
+  }
+  p{margin:0 0 14px;}
+  ul,ol{margin:0 0 14px;padding-left:26px;}
+  li{margin-bottom:6px;}
+
+  .lede{
+    font-size:15px;
+    color:var(--sub);
+    border-left:3px solid var(--rule-dark);
+    padding-left:16px;
+    margin:0 0 26px;
+  }
+
+  code, pre, .mono{
+    font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    font-size:13.3px;
+  }
+  pre{
+    background:var(--code-bg);
+    border:1px solid var(--rule);
+    border-radius:3px;
+    padding:14px 16px;
+    overflow-x:auto;
+    line-height:1.55;
+    margin:0 0 16px;
+  }
+  p code, li code{
+    background:var(--code-bg);
+    padding:1px 5px;
+    border-radius:2px;
+    border:1px solid var(--rule);
+  }
+  .src-tag{
+    display:inline-block;
+    font-family:"SF Mono",Menlo,monospace;
+    font-size:11px;
+    padding:1px 7px;
+    border-radius:2px;
+    margin-left:8px;
+    vertical-align:1px;
+    white-space:nowrap;
+  }
+  .src-confirmed{
+    background:#eaf3ec;
+    color:var(--confirmed);
+    border:1px solid #b9d7c2;
+  }
+  .src-representative{
+    background:#faf1de;
+    color:var(--representative);
+    border:1px solid #e6cf9c;
+  }
+
+  table{
+    border-collapse:collapse;
+    width:100%;
+    margin:0 0 20px;
+    font-size:14px;
+  }
+  th,td{
+    border:1px solid var(--rule);
+    padding:8px 11px;
+    text-align:left;
+    vertical-align:top;
+  }
+  th{
+    background:var(--panel);
+    font-weight:700;
+  }
+  tr:nth-child(even) td{background:#fbfaf7;}
+  td.num, th.num{text-align:right;font-family:"SF Mono",monospace;font-size:13px;}
+
+  .note-box{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-left:4px solid var(--rule-dark);
+    padding:14px 18px;
+    margin:0 0 20px;
+    font-size:14.3px;
+  }
+  .note-box.warn{border-left-color:var(--representative);}
+  .note-box.confirm{border-left-color:var(--confirmed);}
+  .note-box .label{
+    font-weight:700;
+    font-size:12.5px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    display:block;
+    margin-bottom:6px;
+    color:var(--sub);
+  }
+
+  .eq-derivation{
+    background:#fbfbf9;
+    border:1px solid var(--rule);
+    padding:16px 20px;
+    margin:0 0 20px;
+  }
+  .eq-derivation .step-label{
+    font-size:12.5px;
+    color:var(--sub);
+    margin:14px 0 4px;
+  }
+
+  figure{margin:0 0 24px;text-align:center;}
+  figure svg{max-width:100%;height:auto;}
+  figcaption{
+    font-size:12.8px;
+    color:var(--sub);
+    margin-top:8px;
+    text-align:left;
+  }
+
+  .timeline-svg text{font-family:"SF Mono",monospace;}
+
+  hr.sec-div{
+    border:none;
+    border-top:1px solid var(--rule);
+    margin:44px 0;
+  }
+
+  footer{
+    margin-top:60px;
+    padding-top:20px;
+    border-top:2px solid var(--ink);
+    font-size:12.5px;
+    color:var(--sub);
+  }
+
+  @media (max-width: 980px){
+    .layout{grid-template-columns:1fr;}
+    nav.toc{position:static;border-right:none;border-bottom:1px solid var(--rule);padding:0 0 16px;max-height:none;}
+  }
+
+  @media print{
+    nav.toc{display:none;}
+    .layout{display:block;}
+    a{color:inherit;text-decoration:none;}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc">
+  <div class="toc-title">目錄</div>
+  <ol id="toc-list"></ol>
+</nav>
+
+<main>
+
+<header class="title-block">
+  <h1>STM32F405 + BMI088 串級 PID 飛控系統<br>中斷同步、雜訊濾波與頻寬裕度分析</h1>
+  <p class="subtitle">以 Crazyflie 韌體原始碼為基礎的訊號鏈時序與控制迴路數學推導教材</p>
+  <div class="meta">
+    <span>範疇：感測器中斷 → 濾波 → 姿態/位置串級 PID → 頻寬裕度</span>
+    <span>對象：碩士班嵌入式飛控課程</span>
+  </div>
+</header>
+
+<section id="scope">
+<h2>0. 範疇聲明與標註方法</h2>
+
+<p class="lede">本文件所有技術陳述分為兩類，並以右側標籤區分，以維持工程文件應有的可驗證性：</p>
+
+<p>
+<span class="src-tag src-confirmed">程式碼確認</span>
+表示該陳述直接可在使用者上傳之原始碼中逐行對照，本文件會附上檔名與行為描述；
+<span class="src-tag src-representative">代表性數值</span>
+表示該數值取自 Crazyflie 公開文獻或同代硬體之典型設計慣例，但其定義檔案
+（<code>pid.c</code>、<code>filter.c</code>、<code>platform_defaults.h</code>、<code>stabilizer_types.h</code>）
+未包含在本次上傳範圍內，故無法逐行核對，僅供推導方法示範與量級參考。
+</p>
+
+<div class="note-box warn">
+<span class="label">使用限制</span>
+凡標註「代表性數值」之增益（\(K_p, K_i, K_d\)）、濾波器係數、機體轉動慣量
+\(J\)、確切迴路頻率（\(\texttt{ATTITUDE\_RATE}\) 之數值）等，皆<strong>不可</strong>直接作為 CURIO 平台調參依據。
+本文件第 7 節之頻寬裕度計算會展示完整符號推導，使用者可將實際量測值代入同一組公式重新計算。
+</div>
+
+<h3>0.1 本次分析涵蓋之原始碼檔案</h3>
+<table>
+<thead><tr><th>檔案</th><th>涵蓋內容</th><th>確認狀態</th></tr></thead>
+<tbody>
+<tr><td><code>sensors_bmi088_bmp3xx.c</code></td><td>EXTI 中斷設定、雙 semaphore 交握、感測器讀取、LPF 套用</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>sensors_bmi088_common.h</code></td><td>I2C/SPI 後端介面宣告</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>sensors.c</code></td><td>感測器 plugin 分派、<code>EXTI14_Callback</code></td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>estimator_complementary.c</code></td><td>250Hz 姿態估測、100Hz 位置估測迴圈</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>sensfusion6.c</code></td><td>Mahony PI 互補濾波核心</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>controller_pid.c</code></td><td>姿態/角速度串級呼叫順序、模式切換、reset 邏輯</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>attitude_pid_controller.c</code></td><td>角度環／角速度環 PID 物件、積分限幅、LPF 開關、yawMaxDelta</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>position_controller_pid.c</code></td><td>位置環／速度環 PID、機體座標旋轉、推力換算</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>power_distribution_quadrotor.c</code></td><td>混控矩陣、等比例降額</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>motors.c</code></td><td>Timer PWM／DSHOT 輸出、電池電壓補償</td><td class="src-tag src-confirmed">逐行確認</td></tr>
+<tr><td><code>pid.c</code></td><td>PID 更新演算法、微分項濾波邏輯、積分限幅、feedforward</td><td class="src-tag src-confirmed">逐行確認（新增）</td></tr>
+<tr><td><code>filter.c</code></td><td>二階 IIR（<code>lpf2p</code>）係數計算實作，含雙線性轉換與 prewarping</td><td class="src-tag src-confirmed">逐行確認（新增）</td></tr>
+<tr><td><code>platform_defaults_cf2.h</code></td><td>CF2 平台全部 PID 增益、積分限幅、濾波器開關與截止頻率、推力曲線係數</td><td class="src-tag src-confirmed">逐行確認（新增）</td></tr>
+<tr><td><code>platform_defaults.h</code></td><td>機體物理常數（<code>ARM_LENGTH</code>、<code>CF_MASS</code>、<code>THRUST2TORQUE</code>）預設值</td><td class="src-tag src-confirmed">逐行確認（新增）</td></tr>
+<tr><td><code>config.h</code></td><td>FreeRTOS 主頻 168MHz、全部 task 優先權與堆疊大小</td><td class="src-tag src-confirmed">逐行確認（新增）</td></tr>
+<tr><td><code>platform.h</code></td><td>感測器 plugin enum、平台設定結構</td><td class="src-tag src-confirmed">逐行確認（新增）</td></tr>
+<tr><td><code>stabilizer_types.h</code> / <code>autoconf.h</code>（未上傳）</td><td><code>ATTITUDE_RATE</code>、<code>POSITION_RATE</code> 確切數值定義</td><td class="src-tag src-representative">仍未提供，本文採業界公開已知標準值並標註信賴等級</td></tr>
+<tr><td>轉動慣量 \(J_{xx}, J_{yy}\)（機體參數，未上傳）</td><td>第7節頻寬裕度計算所需</td><td class="src-tag src-representative">採公開系統識別文獻數值，非本次上傳確認</td></tr>
+</tbody>
+</table>
+
+<div class="note-box confirm">
+<span class="label">本次更新影響範圍</span>
+第4節（雜訊濾波器）與第5、6節（串級 PID 結構）現在可用<strong>逐行確認</strong>的精確公式與數值完成推導，不再需要標示「代表性數值」。第7節（頻寬裕度）中，控制器 \(C(s)\) 與感測器濾波器 \(F(s)\) 的參數已全數確認；唯一仍需標示代表性數值的是機體轉動慣量 \(J\)（用於建立力矩到角速度的平面模型）與 <code>ATTITUDE_RATE</code>／<code>POSITION_RATE</code> 兩個迴路頻率的確切數字，因其定義檔案不在上傳範圍內。
+</div>
+
+</section>
+<hr class="sec-div">
+
+<section id="architecture">
+<h2>1. 系統架構總覽</h2>
+
+<h3 id="arch-hw">1.1 硬體組成</h3>
+<table>
+<thead><tr><th>元件</th><th>角色</th><th>相關參數</th></tr></thead>
+<tbody>
+<tr><td>STM32F405RG</td><td>主控 MCU，Cortex-M4F，168MHz，單精度 FPU</td><td>NVIC 中斷控制器、EXTI 外部中斷、TIM 硬體 PWM 週邊、I2C1/I2C3</td></tr>
+<tr><td>BMI088</td><td>6 軸 IMU（獨立 accel/gyro die）</td><td>gyro ODR 1000Hz／bw 116Hz；accel ODR 1600Hz／OSR4 過採樣</td></tr>
+<tr><td>BMP3xx</td><td>氣壓計，低頻降頻讀取</td><td>由 <code>SENSORS_DELAY_BARO</code> 計數器降頻</td></tr>
+<tr><td>四路 ESC/馬達</td><td>末端致動器</td><td>類比 PWM 或 DSHOT 數位協定，經 TIM+DMA 驅動</td></tr>
+</tbody>
+</table>
+
+<h3 id="arch-signal-chain">1.2 完整訊號鏈（由感測器中斷到馬達輸出）</h3>
+
+<figure>
+<svg viewBox="0 0 860 620" class="timeline-svg" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .box{fill:#f4f3ef;stroke:#4a4a4a;stroke-width:1;}
+    .box-hw{fill:#eef2ee;stroke:#1f5c3a;stroke-width:1.2;}
+    .lbl{font-size:12px;fill:#1a1a1a;}
+    .sub{font-size:10.3px;fill:#4a4a4a;}
+    .arrow{stroke:#1a1a1a;stroke-width:1.3;marker-end:url(#ah);fill:none;}
+    .freq{font-size:10px;fill:#7a1f1f;}
+  </style>
+  <defs>
+    <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#1a1a1a"/>
+    </marker>
+  </defs>
+
+  <rect class="box-hw" x="330" y="10" width="200" height="42" rx="3"/>
+  <text class="lbl" x="430" y="30" text-anchor="middle">BMI088 INT (PC14)</text>
+  <text class="sub" x="430" y="44" text-anchor="middle">上升緣觸發，硬體事件</text>
+
+  <line class="arrow" x1="430" y1="52" x2="430" y2="80"/>
+
+  <rect class="box" x="300" y="80" width="260" height="46" rx="3"/>
+  <text class="lbl" x="430" y="100" text-anchor="middle">EXTI15_10_IRQHandler → EXTI14_Callback</text>
+  <text class="sub" x="430" y="115" text-anchor="middle">sensors.c ／ ISR context</text>
+
+  <line class="arrow" x1="430" y1="126" x2="430" y2="154"/>
+
+  <rect class="box" x="260" y="154" width="340" height="52" rx="3"/>
+  <text class="lbl" x="430" y="174" text-anchor="middle">sensorsBmi088Bmp3xxDataAvailableCallback()</text>
+  <text class="sub" x="430" y="189" text-anchor="middle">記錄 imuIntTimestamp；xSemaphoreGiveFromISR(sensorsDataReady)</text>
+  <text class="sub" x="430" y="202" text-anchor="middle">→ portYIELD()（若喚醒更高優先權 task）</text>
+
+  <line class="arrow" x1="430" y1="206" x2="430" y2="234"/>
+
+  <rect class="box" x="240" y="234" width="380" height="60" rx="3"/>
+  <text class="lbl" x="430" y="254" text-anchor="middle">sensorsTask：xSemaphoreTake(sensorsDataReady)</text>
+  <text class="sub" x="430" y="269" text-anchor="middle">I2C burst read（gyro+accel）→ 零偏校正 → 座標對齊</text>
+  <text class="sub" x="430" y="284" text-anchor="middle">→ 二階 LPF（gyro 80Hz／accel 30Hz） [第4節]</text>
+
+  <line class="arrow" x1="430" y1="294" x2="430" y2="322"/>
+
+  <rect class="box" x="270" y="322" width="320" height="42" rx="3"/>
+  <text class="lbl" x="430" y="342" text-anchor="middle">estimatorEnqueue() → measurement queue</text>
+  <text class="sub" x="430" y="356" text-anchor="middle">estimator.c ／ 多生產者單消費者</text>
+
+  <line class="arrow" x1="430" y1="364" x2="430" y2="392"/>
+
+  <rect class="box" x="240" y="392" width="380" height="46" rx="3"/>
+  <text class="lbl" x="430" y="412" text-anchor="middle">estimatorComplementary() → sensfusion6UpdateQ()</text>
+  <text class="freq" x="620" y="412" text-anchor="start">250Hz</text>
+
+  <line class="arrow" x1="430" y1="438" x2="430" y2="466"/>
+
+  <rect class="box" x="180" y="466" width="230" height="60" rx="3"/>
+  <text class="lbl" x="295" y="486" text-anchor="middle">角度環 PID</text>
+  <text class="sub" x="295" y="501" text-anchor="middle">attitudeControllerCorrectAttitudePID</text>
+  <text class="freq" x="295" y="516" text-anchor="middle">ATTITUDE_RATE [第7節示例]</text>
+
+  <line class="arrow" x1="295" y1="526" x2="295" y2="546"/>
+  <line class="arrow" x1="410" y1="497" x2="470" y2="497"/>
+
+  <rect class="box" x="450" y="466" width="230" height="60" rx="3"/>
+  <text class="lbl" x="565" y="486" text-anchor="middle">角速度環 PID</text>
+  <text class="sub" x="565" y="501" text-anchor="middle">attitudeControllerCorrectRatePID</text>
+  <text class="freq" x="565" y="516" text-anchor="middle">ATTITUDE_RATE [第7節示例]</text>
+
+  <line class="arrow" x1="565" y1="526" x2="565" y2="546"/>
+
+  <rect class="box" x="240" y="546" width="380" height="42" rx="3"/>
+  <text class="lbl" x="430" y="566" text-anchor="middle">powerDistribution() 混控 → powerDistributionCap()</text>
+  <text class="sub" x="430" y="579" text-anchor="middle">等比例降額，保持力矩平衡</text>
+
+  <line class="arrow" x1="430" y1="588" x2="430" y2="608"/>
+
+  <rect class="box-hw" x="290" y="608" width="280" height="0" rx="3"/>
+  <text class="lbl" x="430" y="610" text-anchor="middle" font-weight="700">motorsSetRatio() → TIM CCR / DSHOT DMA → 馬達</text>
+</svg>
+<figcaption>圖 1：從 BMI088 中斷到馬達輸出的完整訊號鏈。左右分支代表角度環（外環）與角速度環（內環）串級關係；虛線頻率標籤詳見第 3、7 節。位置/速度環（第6節）並聯於角度環之前，其輸出即為此圖中「角度環」的目標輸入。</figcaption>
+</figure>
+
+<h3 id="arch-cascade-full">1.3 完整四層串級結構</h3>
+
+<p>把第 5、6 節的細節先在此處立體化：這套控制系統實際上是<strong>四層巢狀串級（nested cascade）</strong>，由外而內依序是位置環 → 速度環 → 角度環 → 角速度環，只有最內層（角速度環）直接作用在馬達力矩上：</p>
+
+<div class="eq-derivation">
+\[
+\underbrace{x_{sp} \to \dot x_{sp}}_{\text{位置環（外）}}
+\;\to\;
+\underbrace{\dot x_{sp} \to \phi_{sp},\theta_{sp}}_{\text{速度環}}
+\;\to\;
+\underbrace{\phi_{sp} \to \dot\phi_{sp}}_{\text{角度環}}
+\;\to\;
+\underbrace{\dot\phi_{sp} \to \tau}_{\text{角速度環（內）}}
+\;\to\; \text{混控} \to \text{馬達}
+\]
+</div>
+
+<p>每一層的角色是把「上一層的誤差」轉換成「下一層的設定值」，層數越內側，頻寬需求越高、迴路頻率越快（見表 1），這是串級控制的核心設計原則：<strong>內環必須比外環快至少 5–10 倍</strong>，否則外環的指令變化會落在內環的響應時間常數之內，造成耦合震盪。</p>
+
+<table>
+<thead><tr><th>層級</th><th>輸入</th><th>輸出</th><th>迴路頻率</th><th>狀態</th></tr></thead>
+<tbody>
+<tr><td>位置環</td><td>位置誤差 \((x_{sp}-x)\)</td><td>速度設定值</td><td><code>POSITION_RATE</code></td><td class="src-tag src-representative">典型 100Hz</td></tr>
+<tr><td>速度環</td><td>速度誤差</td><td>角度設定值（roll/pitch）</td><td><code>POSITION_RATE</code></td><td class="src-tag src-representative">典型 100Hz</td></tr>
+<tr><td>角度環</td><td>角度誤差</td><td>角速度設定值</td><td><code>ATTITUDE_RATE</code></td><td class="src-tag src-representative">典型 500Hz</td></tr>
+<tr><td>角速度環</td><td>角速度誤差</td><td>馬達力矩指令</td><td><code>ATTITUDE_RATE</code></td><td class="src-tag src-representative">典型 500Hz</td></tr>
+</tbody>
+</table>
+
+<div class="note-box">
+<span class="label">程式碼證據</span>
+角度環與角速度環同頻執行是 <span class="src-tag src-confirmed">確認</span> 的：<code>controller_pid.c</code> 中兩者都掛在同一個
+<code>if (RATE_DO_EXECUTE(ATTITUDE_RATE, stabilizerStep))</code> 區塊內依序呼叫，代表這兩層雖然邏輯上是串級，但在本韌體實作中<strong>是同一個取樣週期內背靠背執行</strong>，而非各自獨立降頻——這跟教科書上「內環永遠比外環快」的一般敘述有微妙差異：這裡的加速並非來自不同執行頻率，而是角速度環的動態本身遠比角度環快，兩者共用取樣率仍然成立串級穩定性，因為角速度是角度的微分，其開迴路增益交越頻率天生就比角度環高。
+</div>
+
+</section>
+<hr class="sec-div">
+
+<section id="isr-sync">
+<h2>2. STM32F405 + BMI088 中斷同步機制</h2>
+
+<h3>2.1 硬體中斷腳位設定</h3>
+<span class="src-tag src-confirmed">sensors_bmi088_bmp3xx.c, sensorsInterruptInit()</span>
+<pre>GPIO_InitStructure.GPIO_Pin  = GPIO_Pin_14;
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+GPIO_Init(GPIOC, &amp;GPIO_InitStructure);
+
+SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOC, EXTI_PinSource14);
+
+EXTI_InitStructure.EXTI_Line    = EXTI_Line14;
+EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
+EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising;
+EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+portDISABLE_INTERRUPTS();
+EXTI_Init(&amp;EXTI_InitStructure);
+EXTI_ClearITPendingBit(EXTI_Line14);
+portENABLE_INTERRUPTS();</pre>
+
+<p>BMI088 陀螺儀的 data-ready 訊號被設定到 <code>BMI088_INT_CHANNEL_3</code>，實體接到 MCU 的 GPIOC Pin14，經
+<code>SYSCFG_EXTILineConfig</code> 路由到 <code>EXTI_Line14</code>。STM32F4 系列的 EXTI10~15 共用同一條 NVIC 向量
+（<code>EXTI15_10_IRQHandler</code>），向量內部須用 <code>EXTI_GetITStatus(EXTI_Line14)</code> 判斷是否為這條線觸發
+——本次上傳檔案未包含該向量本體，但 <code>sensors.c</code> 中的 <code>EXTI14_Callback</code> 命名與此完全對應。</p>
+
+<p>值得注意的是：只有 <strong>gyro</strong> 被設成中斷來源（<code>bmi088_set_gyro_int_config()</code>），accel 並未獨立配置中斷腳位。這代表整條資料鏈的節拍器是陀螺儀（1000Hz ODR），加速度計是在同一次 ISR 觸發後，於
+<code>sensorsTask</code> 內用<strong>阻塞式輪詢讀取</strong>一併取得，兩者共用同一個時基，並非各自獨立中斷驅動。</p>
+
+<div class="note-box">
+<span class="label">臨界區保護的理由</span>
+<code>EXTI_Init()</code> 內部需寫入 <code>EXTI_IMR</code>（中斷遮罩暫存器）與 <code>EXTI_RTSR</code>（上升緣選擇暫存器）兩個以上暫存器，若在寫入中途被更高優先權中斷打斷、而該中斷剛好去查詢 EXTI 狀態，可能讀到「遮罩已開但邊緣選擇尚未生效」的中間態，導致誤判或漏判第一次觸發。<code>portDISABLE_INTERRUPTS()</code>／<code>portENABLE_INTERRUPTS()</code> 把整個多暫存器寫入序列包成不可分割的臨界區，這是設定任何多暫存器耦合的周邊時的標準防護模式。
+</div>
+
+<h3>2.2 ISR：資料到位事件處理</h3>
+<span class="src-tag src-confirmed">sensors_bmi088_bmp3xx.c, sensorsBmi088Bmp3xxDataAvailableCallback()</span>
+<pre>void sensorsBmi088Bmp3xxDataAvailableCallback(void)
+{
+  portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+  imuIntTimestamp = usecTimestamp();
+  xSemaphoreGiveFromISR(sensorsDataReady, &amp;xHigherPriorityTaskWoken);
+
+  if (xHigherPriorityTaskWoken)
+  {
+    portYIELD();
+  }
+}</pre>
+
+<p>ISR 只做三件事，刻意保持極短：</p>
+<ol>
+<li><strong>時間戳記優先</strong>——<code>usecTimestamp()</code> 必須在 ISR context 內第一時間呼叫，因為只有這個時間點才代表「感測器實際完成取樣」的物理真實時刻；若延後到 task context 記錄，會混入 FreeRTOS 排程延遲，時間戳記即失去校時意義。</li>
+<li><strong>ISR-safe semaphore give</strong>——不可呼叫一般版本 <code>xSemaphoreGive()</code>，Cortex-M 的 NVIC 架構下 ISR 不能執行可能導致 blocking 的 API。</li>
+<li><strong>條件式立即讓權</strong>——<code>portYIELD()</code> 只在確定喚醒了更高優先權 task 時才觸發，把「中斷觸發」到「task 真正開始執行」的延遲壓到最低，不需等到下個 SysTick。</li>
+</ol>
+
+<h3>2.3 雙 Semaphore 交握：為什麼不是單一同步點</h3>
+
+<span class="src-tag src-confirmed">sensors_bmi088_bmp3xx.c 第305–383行</span>
+
+<div class="note-box confirm">
+<span class="label">關鍵結構</span>
+本檔案建立了兩個獨立的 binary semaphore：<code>sensorsDataReady</code>（ISR → sensorsTask）與
+<code>dataReady</code>（sensorsTask → stabilizerTask）。兩者語意不同，不可混用。
+</div>
+
+<pre>while (1) {
+  if (pdTRUE == xSemaphoreTake(sensorsDataReady, portMAX_DELAY))
+  {
+    sensorData.interruptTimestamp = imuIntTimestamp;
+    sensorsGyroGet(&amp;gyroRaw);      // I2C burst read，這裡才真正耗時
+    sensorsAccelGet(&amp;accelRaw);
+    /* 零偏校正、座標對齊、LPF 濾波、estimatorEnqueue() ×2 */
+  }
+  if (isBarometerPresent) { /* 降頻讀氣壓計 */ }
+
+  xQueueOverwrite(accelerometerDataQueue, &amp;sensorData.acc);
+  xQueueOverwrite(gyroDataQueue, &amp;sensorData.gyro);
+  xSemaphoreGive(dataReady);   // 通知 stabilizerTask
+}
+
+void sensorsBmi088Bmp3xxWaitDataReady(void) {
+  xSemaphoreTake(dataReady, portMAX_DELAY);   // stabilizerTask 卡在這裡
+}</pre>
+
+<p>把「感測器物理上有新資料」與「這一輪資料已經處理完成、可以安全被主控制迴圈使用」分成兩個獨立同步點，是這個架構的設計核心。若只用單一 semaphore，<code>stabilizerTask</code> 有可能在 <code>sensorsTask</code> 的 I2C 傳輸或濾波器計算都還沒完成時就被提前喚醒，讀到半殘的資料。三段式接力（<strong>硬體中斷 → 資料處理 task → 控制 task</strong>）把「不確定延遲的匯流排 I/O」完全隔離在中間層，這是後面第 3 節時序分析的結構基礎。</p>
+
+</section>
+<hr class="sec-div">
+
+<section id="timing">
+<h2>3. 時序分析與延遲預算</h2>
+
+<h3>3.1 確認的系統時脈與排程參數</h3>
+<span class="src-tag src-confirmed">config.h</span>
+<pre>#define FREERTOS_MCU_CLOCK_HZ   168000000
+
+#define STABILIZER_TASK_PRI       5
+#define RATE_SUPERVISOR_TASK_PRI  5
+#define SENSORS_TASK_PRI          4
+...
+#define PARAM_TASK_PRI            1</pre>
+
+<p>STM32F405 主頻確認為 168MHz。task 優先權表確認 <code>stabilizerTask</code>（優先權 5）高於 <code>sensorsTask</code>（優先權 4）。這個安排乍看違反直覺——一般會假設「感測器讀取」該給最高優先權以降低延遲——但實際上是正確設計：</p>
+
+<div class="note-box confirm">
+<span class="label">優先權設計背後的排程邏輯</span>
+<code>stabilizerTask</code> 絕大多數時間阻塞在 <code>xSemaphoreTake(dataReady, portMAX_DELAY)</code>，不佔用 CPU。當 <code>sensorsTask</code>（優先權4）處理完一輪資料、呼叫 <code>xSemaphoreGive(dataReady)</code> 時，FreeRTOS 的搶佔式排程器會立即偵測到「有一個優先權更高（5>4）的 task 從阻塞轉為就緒」，於是<strong>立即搶佔</strong> <code>sensorsTask</code> 本身、切換執行 <code>stabilizerTask</code>——不需要等待 <code>sensorsTask</code> 跑完當輪迴圈或等下一個 SysTick。這確保了控制迴圈一旦資料備妥就以最高急迫性執行，而 <code>sensorsTask</code> 只需要保證能穩定搶佔更低優先權的 task（LOG=1、PARAM=1 等），不需要是全系統最高優先權。
+</div>
+
+<h3>3.2 完整延遲鏈拆解</h3>
+
+<p>把第2節確認的中斷交握流程換算成實際時間，逐段拆解：</p>
+
+<table>
+<thead><tr><th>階段</th><th>機制</th><th>估算延遲</th><th>依據</th></tr></thead>
+<tbody>
+<tr>
+  <td>① BMI088 內部取樣→INT拉高</td>
+  <td>硬體轉換時間</td>
+  <td class="num">≪ 1 µs</td>
+  <td class="src-tag src-representative">BMI088 datasheet 典型值</td>
+</tr>
+<tr>
+  <td>② EXTI 邊緣偵測→ISR進入</td>
+  <td>Cortex-M4 中斷延遲（NVIC 硬體向量抓取＋堆疊自動存檔）</td>
+  <td class="num">12 cycles ≈ 71 ns</td>
+  <td class="src-tag src-representative">ARMv7-M 架構手冊固定值，@168MHz</td>
+</tr>
+<tr>
+  <td>③ ISR 執行（時間戳記＋semaphore give）</td>
+  <td><code>usecTimestamp()</code>＋<code>xSemaphoreGiveFromISR</code>＋<code>portYIELD</code></td>
+  <td class="num">~1–2 µs</td>
+  <td class="src-tag src-representative">典型 FreeRTOS API 執行週期數量級</td>
+</tr>
+<tr>
+  <td>④ Context switch → sensorsTask 就緒執行</td>
+  <td>PendSV 觸發＋暫存器還原</td>
+  <td class="num">~1 µs</td>
+  <td class="src-tag src-representative">Cortex-M4F 含FPU堆疊，典型量級</td>
+</tr>
+<tr>
+  <td>⑤ I2C burst read（gyro 6B + accel 6B，含暫存器位址）</td>
+  <td>阻塞式匯流排傳輸，Fast Mode 400kHz</td>
+  <td class="num">≈ 270–300 µs</td>
+  <td>本文計算，見3.3節</td>
+</tr>
+<tr>
+  <td>⑥ 零偏校正／座標對齊／二階LPF（gyro+accel共6軸）</td>
+  <td>浮點運算，硬體FPU單週期MAC</td>
+  <td class="num">&lt; 5 µs</td>
+  <td class="src-tag src-representative">典型量級，FPU單精度運算</td>
+</tr>
+<tr>
+  <td>⑦ <code>estimatorEnqueue()</code>×2 ＋ <code>xQueueOverwrite</code>×2</td>
+  <td>FreeRTOS queue API</td>
+  <td class="num">&lt; 2 µs</td>
+  <td class="src-tag src-representative">典型量級</td>
+</tr>
+<tr>
+  <td>⑧ <code>xSemaphoreGive(dataReady)</code> → context switch → stabilizerTask 就緒</td>
+  <td>搶佔式排程（見3.1節）</td>
+  <td class="num">~1–2 µs</td>
+  <td class="src-tag src-representative">典型量級</td>
+</tr>
+<tr>
+  <td><strong>總計（① ~ ⑧）</strong></td>
+  <td colspan="2" class="num"><strong>≈ 275–310 µs</strong></td>
+  <td>加總</td>
+</tr>
+</tbody>
+</table>
+
+<div class="note-box warn">
+<span class="label">主導項判讀</span>
+延遲鏈中 <strong>I2C 阻塞式匯流排傳輸（⑤）主導了超過 90% 的總延遲</strong>，中斷處理本身（②③④）與濾波運算（⑥⑦⑧）加總不到 10 µs，相較之下幾乎可忽略。這代表若要進一步壓低這條延遲鏈，優化方向應該是「用 DMA 做非阻塞 I2C 傳輸」而非「優化中斷處理程式碼」——後者已經逼近 Cortex-M4 架構的硬體極限，優化空間有限；前者則有數量級的改善潛力（DMA 傳輸期間 CPU 可以先處理上一輪資料或直接讓出給更低優先權 task，不需要整段時間阻塞等待）。這是您在 CURIO RP2354A 上如果要進一步壓縮延遲鏈的明確切入點。
+</div>
+
+<h3 id="i2c-timing">3.3 I2C Fast Mode 傳輸時間推導</h3>
+
+<div class="eq-derivation">
+<p>I2C Fast Mode 時脈 \(f_{I2C} = 400\text{kHz}\)，每個 bit 週期：</p>
+\[
+T_{bit} = \frac{1}{f_{I2C}} = \frac{1}{400{,}000} = 2.5\ \mu s
+\]
+
+<p class="step-label">單一 byte 傳輸（含 ACK bit）</p>
+\[
+T_{byte} = 9 \times T_{bit} = 9 \times 2.5\ \mu s = 22.5\ \mu s
+\]
+
+<p class="step-label">一次 burst read 交易結構</p>
+<p>標準 I2C 讀取交易：START(1bit) + 裝置位址(1B) + 暫存器位址(1B) + 重複START + 裝置位址(1B) + N×資料位元組 + STOP。以陀螺儀 6 bytes（x/y/z 各2B）+ 加速度計 6 bytes 分兩次獨立交易估算：</p>
+\[
+T_{gyro} \approx (3\ \text{bytes 額外開銷} + 6\ \text{bytes 資料}) \times T_{byte} \approx 9 \times 22.5\mu s = 202.5\ \mu s
+\]
+<p>實際韌體對加速度計與陀螺儀可能合併為單次連續 burst 讀取（視暫存器位址是否連續而定），故上表估算值（270–300µs）取兩次獨立交易與一次合併交易之間的合理區間，實際數字建議用邏輯分析儀量測 SCL/SDA 波形驗證。</p>
+</div>
+
+<h3 id="nyquist">3.4 取樣定理與迴路頻率的關係</h3>
+
+<p>BMI088 陀螺儀 ODR 為 1000Hz <span class="src-tag src-confirmed">bmi088Dev.gyro_cfg.odr = BMI088_GYRO_BW_116_ODR_1000_HZ</span>，依 Nyquist–Shannon 取樣定理，此取樣率能無混疊重建的最高訊號頻率為：</p>
+
+<div class="eq-derivation">
+\[
+f_{Nyquist} = \frac{f_{ODR}}{2} = \frac{1000\text{Hz}}{2} = 500\text{Hz}
+\]
+</div>
+
+<p>而控制迴圈（角度環／角速度環，代表性數值 <code>ATTITUDE_RATE</code>=500Hz）的執行頻率恰好等於此 Nyquist 頻率。這不是巧合，而是常見的工程折衷：控制迴圈頻率設在感測器取樣率的一半，確保<strong>每次控制迴圈執行時，至少有一筆全新的感測器資料可用</strong>（實際上因為感測器 1000Hz vs 控制 500Hz，平均每次控制迴圈對應恰好 2 筆新樣本，用 <code>xQueueOverwrite</code> 機制自然地把多餘樣本捨棄，只保留最新值，如第2節所述）。若控制迴圈頻率設得比感測器取樣率還高，會出現「同一筆感測器資料被控制器讀取兩次以上」的資料延遲假象（stale data aliasing），這在調校 D 項增益時特別危險，因為連續兩次讀到相同值會讓微分項瞬間掉到零，產生虛假的高頻震盪抑制錯覺。</p>
+
+</section>
+<hr class="sec-div">
+
+<section id="filtering">
+<h2>4. 雜訊處理與濾波器設計</h2>
+
+<h3>4.1 兩層濾波架構總覽</h3>
+
+<p>這套韌體的雜訊抑制分成兩個完全獨立的層級，各自有不同的設計目的：</p>
+
+<table>
+<thead><tr><th>層級</th><th>位置</th><th>作用對象</th><th>可否關閉</th></tr></thead>
+<tbody>
+<tr><td>感測器前端 LPF</td><td><code>sensors_bmi088_bmp3xx.c</code>，感測器讀取後立即套用</td><td>陀螺儀、加速度計原始值</td><td class="src-tag src-confirmed">恆常開啟，無旗標</td></tr>
+<tr><td>PID 微分項 LPF</td><td><code>pid.c</code>，<code>pidUpdate()</code> 內部，僅作用於 D 項</td><td>各軸角度/角速度/位置/速度 PID 的微分項</td><td class="src-tag src-confirmed">由 <code>enableDFilter</code> 旗標控制，各軸各迴路可獨立開關</td></tr>
+</tbody>
+</table>
+
+<h3 id="lpf2p-derivation">4.2 二階 IIR 濾波器（<code>lpf2p</code>）完整數學推導</h3>
+
+<span class="src-tag src-confirmed">filter.c, lpf2pSetCutoffFreq()</span>
+<pre>float fr = sample_freq/cutoff_freq;
+float ohm = tanf(M_PI_F/fr);
+float c = 1.0f+2.0f*cosf(M_PI_F/4.0f)*ohm+ohm*ohm;
+lpfData->b0 = ohm*ohm/c;
+lpfData->b1 = 2.0f*lpfData->b0;
+lpfData->b2 = lpfData->b0;
+lpfData->a1 = 2.0f*(ohm*ohm-1.0f)/c;
+lpfData->a2 = (1.0f-2.0f*cosf(M_PI_F/4.0f)*ohm+ohm*ohm)/c;</pre>
+
+<div class="eq-derivation">
+
+<p class="step-label">步驟一：連續時間二階 Butterworth 原型</p>
+<p>二階 Butterworth 低通濾波器的定義特徵是「最大平坦（maximally flat）」通帶響應，其標準化（截止頻率正規化為 \(\Omega_c=1\)）轉移函數為：</p>
+\[
+H(s) = \frac{1}{s^2 + \sqrt{2}\,s + 1}
+\]
+<p>分母的 \(\sqrt{2}\) 係數對應阻尼比 \(\zeta = \dfrac{1}{\sqrt{2}} \approx 0.707\)，這正是 Butterworth 濾波器（相對於 Chebyshev、Bessel 等其他濾波器族）的定義性質：二階系統阻尼比為 \(1/\sqrt2\) 時，頻率響應在通帶內二階導數為零、無峰值（無 Q 值突起），故稱「最大平坦」。程式碼中 <code>2.0f*cosf(M_PI_F/4.0f)</code> 正是 \(2\cos(\pi/4) = 2 \times \frac{\sqrt2}{2} = \sqrt2\) 的浮點展開寫法。</p>
+
+<p class="step-label">步驟二：頻率預變形（Pre-warping）</p>
+<p>標準雙線性轉換 \(s = \frac{2}{T}\cdot\frac{1-z^{-1}}{1+z^{-1}}\) 會把類比頻率軸做非線性壓縮（頻率翹曲，frequency warping），若不修正，實際數位濾波器的截止頻率會偏離設計目標。修正方法是先用預變形公式算出「修正後的類比截止頻率」\(\omega_{pre}\)，讓映射後恰好落在目標數位截止頻率上：</p>
+\[
+\omega_{pre} = \tan\!\left(\frac{\pi f_c}{f_s}\right)
+\]
+<p>這正是程式碼中 <code>ohm = tanf(M_PI_F/fr)</code>，其中 <code>fr = sample_freq/cutoff_freq</code>，故 <code>M_PI_F/fr = π·cutoff_freq/sample_freq</code>，與上式完全對應。</p>
+
+<p class="step-label">步驟三：代入雙線性轉換並化簡</p>
+<p>以 \(s \leftarrow \omega_{pre}\cdot\dfrac{1-z^{-1}}{1+z^{-1}}\) 代入步驟一的 \(H(s)\)，兩邊乘以 \((1+z^{-1})^2\) 整理後可得：</p>
+\[
+H(z) = \frac{\omega_{pre}^2(1+z^{-1})^2}{c + 2(1-\omega_{pre}^2)z^{-1} + (\omega_{pre}^2-\sqrt2\,\omega_{pre}+1)z^{-2}}
+\]
+\[
+\text{其中}\quad c = 1+\sqrt2\,\omega_{pre}+\omega_{pre}^2
+\]
+<p>將分子分母同除以 \(c\)，即得程式碼中的五個係數 \(b_0,b_1,b_2,a_1,a_2\)：</p>
+\[
+b_0=b_2=\frac{\omega_{pre}^2}{c},\quad b_1=\frac{2\omega_{pre}^2}{c},\quad
+a_1=\frac{2(\omega_{pre}^2-1)}{c},\quad a_2=\frac{\omega_{pre}^2-\sqrt2\,\omega_{pre}+1}{c}
+\]
+
+<p class="step-label">步驟四：正確性驗證（直流增益與 Nyquist 增益）</p>
+<p>代入 \(z=1\)（直流，\(z^{-1}=1\)）：</p>
+\[
+H(1)=\frac{b_0+b_1+b_2}{1+a_1+a_2}=\frac{4\omega_{pre}^2/c}{4\omega_{pre}^2/c}=1
+\]
+<p>代入 \(z=-1\)（Nyquist 頻率 \(f_s/2\)，\(z^{-1}=-1\)）：</p>
+\[
+H(-1)=\frac{b_0-b_1+b_2}{1-a_1+a_2}=\frac{0}{\cdots}=0
+\]
+<p>直流增益恰為 1（低頻訊號完全通過，無衰減），Nyquist 頻率增益恰為 0（最高頻雜訊完全濾除），兩者皆符合低通濾波器的物理預期，驗證推導與程式碼一致。</p>
+
+</div>
+
+<h3 id="freq-response">4.3 頻率響應（供第7節相位裕度計算使用）</h3>
+
+<p>在取樣率遠高於分析頻率範圍的前提下（本系統 \(f_s=1000\text{Hz}\)，分析頻段落在數十 Hz 量級），可直接使用步驟一的連續時間原型計算增益與相位，數位效應造成的誤差可忽略：</p>
+
+<div class="eq-derivation">
+<p>令 \(x = \omega/\omega_c = f/f_c\)，則：</p>
+\[
+|H(jx)| = \frac{1}{\sqrt{(1-x^2)^2+2x^2}}
+\qquad
+\angle H(jx) = -\arctan\!\left(\frac{\sqrt2\,x}{1-x^2}\right)
+\]
+<p>於截止頻率處（\(x=1\)）：</p>
+\[
+|H(j1)| = \frac{1}{\sqrt{0+2}} = \frac{1}{\sqrt2}\ (-3.01\text{dB})
+\qquad
+\angle H(j1) = -90°
+\]
+<p>此為 Butterworth 濾波器的定義性質：截止頻率處增益恰為 \(-3\text{dB}\)、相位落後恰為 \(90°\)，兩極點各貢獻 45°。</p>
+</div>
+
+<h3 id="confirmed-cutoffs">4.4 各迴路實際確認的截止頻率與開關狀態</h3>
+
+<span class="src-tag src-confirmed">sensors_bmi088_bmp3xx.c ／ attitude_pid_controller.c ／ position_controller_pid.c ／ platform_defaults_cf2.h</span>
+
+<table>
+<thead><tr><th>訊號</th><th>濾波器位置</th><th>截止頻率</th><th>預設狀態</th></tr></thead>
+<tbody>
+<tr><td>陀螺儀原始值</td><td>感測器前端（<code>gyroLpf</code>）</td><td class="num">80 Hz</td><td><strong>恆開</strong>，無旗標</td></tr>
+<tr><td>加速度計原始值</td><td>感測器前端（<code>accLpf</code>）</td><td class="num">30 Hz</td><td><strong>恆開</strong>，無旗標</td></tr>
+<tr><td>角速度環 D 項（roll/pitch/yaw）</td><td>PID 內部 <code>dFilter</code></td><td class="num">30 Hz</td><td><span style="color:var(--representative)">預設<strong>關閉</strong></span>（<code>ATTITUDE_RATE_LPF_ENABLE=false</code>）</td></tr>
+<tr><td>角度環 D 項（roll/pitch/yaw）</td><td>PID 內部 <code>dFilter</code></td><td class="num">15 Hz</td><td><span style="color:var(--representative)">預設<strong>關閉</strong></span>（<code>ATTITUDE_LPF_ENABLE=false</code>）</td></tr>
+<tr><td>位置環 XY／Z</td><td>PID 內部 <code>dFilter</code></td><td class="num">20 Hz</td><td><strong>預設開啟</strong>（<code>PID_POS_XY/Z_FILT_ENABLE=true</code>）</td></tr>
+<tr><td>速度環 XY／Z（一般模式）</td><td>PID 內部 <code>dFilter</code></td><td class="num">20 Hz</td><td><strong>預設開啟</strong></td></tr>
+<tr><td>速度環 Z（baro 定高模式）</td><td>PID 內部 <code>dFilter</code></td><td class="num">0.7 Hz</td><td><strong>預設開啟</strong>（<code>CONFIG_CONTROLLER_PID_IMPROVED_BARO_Z_HOLD</code>）</td></tr>
+</tbody>
+</table>
+
+<div class="note-box warn">
+<span class="label">重要發現：角度／角速度環的 D-filter 預設關閉</span>
+這是本次資料核對中最值得注意的一點：<code>platform_defaults_cf2.h</code> 確認 <code>ATTITUDE_LPF_ENABLE</code> 與
+<code>ATTITUDE_RATE_LPF_ENABLE</code> 兩者預設值皆為 <code>false</code>。也就是說，姿態串級 PID（角度環＋角速度環）的微分項<strong>在預設組態下完全沒有額外濾波</strong>，D 項直接對「已經過感測器前端濾波」的測量值（80Hz/30Hz LPF 後）做差分。這代表姿態迴路的雜訊抑制能力，實際上完全依賴第4.1節的<strong>感測器前端濾波器</strong>，PID 內部原本設計要用的 30Hz／15Hz 二階濾波器（見表格）是「已定義但未啟用」的保留選項，需要使用者主動透過 <code>rateFiltEn</code>／<code>attFiltEn</code> 參數開啟。相對地，位置／速度環的濾波器<strong>預設是開啟的</strong>，兩條串級（姿態 vs 位置）在濾波策略上的預設行為並不對稱。若您在 CURIO 上要重現或改進這條濾波鏈，這個「預設關閉」的細節是容易被忽略、但直接影響雜訊行為與相位裕度的關鍵組態差異。
+</div>
+
+<h3>4.5 為何角速度用 80Hz、加速度計用 30Hz：頻寬需求與雜訊來源的權衡</h3>
+
+<p>感測器前端濾波器截止頻率的選擇反映了兩個訊號各自不同的用途與雜訊特性：</p>
+
+<ul>
+<li><strong>陀螺儀（80Hz）</strong>：直接作為角速度環的量測回授，是控制頻寬鏈中相位裕度最敏感的一環（見第7節）。80Hz 截止頻率在 <code>ATTITUDE_RATE</code>（代表性數值 500Hz）的迴路頻率下，仍能保留足夠通帶頻寬，讓控制器能對更高頻的擾動作出反應；若截止頻率設太低，會侵蝕角速度環原本就緊繃的相位裕度。</li>
+<li><strong>加速度計（30Hz）</strong>：主要用途是為姿態融合（<code>sensfusion6.c</code>）提供重力方向的低頻參考，其量測本質上受到螺旋槳氣動與機構振動耦合的高頻雜訊污染最嚴重（四軸機加速度計最主要的雜訊來源就是機架振動，頻率通常落在馬達轉速的基頻與諧波，遠高於姿態變化本身的頻率），30Hz 已足夠涵蓋姿態變化的實際物理頻寬，同時大幅衰減振動雜訊。</li>
+</ul>
+
+<p>這是「感測器濾波器設計必須考慮訊號下游用途，而非只看訊號本身頻譜」的具體案例：同一顆 IMU 的兩軸資料因為下游用途不同（一個是快速回授、一個是慢速姿態參考），濾波策略也應該不同。</p>
+
+</section>
+<hr class="sec-div">
+
+<section id="attitude-cascade">
+<h2>5. 姿態串級 PID：演算法結構與確認增益</h2>
+
+<h3 id="pid-algorithm">5.1 <code>pidUpdate()</code> 演算法逐步拆解</h3>
+
+<span class="src-tag src-confirmed">pid.c, pidUpdate()</span>
+
+<pre>pid->error = pid->desired - measured;
+// (yaw專用) 誤差跨越±180°時的環繞修正
+
+pid->outP = pid->kp * pid->error;                       // ① 比例項
+output += pid->outP;
+
+float delta = -(measured - pid->prevMeasured);           // ② 對「量測值」微分，非對「誤差」微分
+// (yaw專用) delta跨越±180°時的環繞修正
+pid->deriv = enableDFilter ? lpf2pApply(&pid->dFilter, delta/pid->dt) : delta/pid->dt;
+pid->outD = pid->kd * pid->deriv;
+output += pid->outD;
+
+pid->integ += pid->error * pid->dt;                       // ③ 積分累加（矩形積分法）
+pid->integ = constrain(pid->integ, -pid->iLimit, pid->iLimit);  // ④ 積分限幅（anti-windup）
+pid->outI = pid->ki * pid->integ;
+output += pid->outI;
+
+pid->outFF = pid->kff * pid->desired;                     // ⑤ 前饋項
+output += pid->outFF;
+
+output = constrain(output, -pid->outputLimit, pid->outputLimit);  // ⑥ 總輸出限幅
+pid->prevMeasured = measured;</pre>
+
+<h4>① 微分對「量測值」而非「誤差」微分</h4>
+<p>程式碼註解明確說明理由：若對誤差 \(e=r-y\) 微分，當設定值 \(r\) 瞬間跳變時，微分項會出現一個瞬間尖峰（derivative kick），因為 \(\dot e\) 在階躍瞬間理論上趨近無限大。改為對量測值 \(y\) 微分（\(\dot y\)，符號取負號使其等效於誤差微分在穩態時的行為），设定值跳變不會直接反映在微分項上，只有「實際測到的物理量變化速度」才會，這在飛控上尤其重要，因為姿態設定值經常因搖桿指令瞬間改變。</p>
+
+<h4>④ 積分限幅式 Anti-windup</h4>
+<p>本實作用的是最簡單直接的 anti-windup 手法：<strong>先累加、後夾限</strong>（clamping），而非更精細的 back-calculation 或 conditional integration。當控制器輸出已經飽和（例如電池電壓不足、馬達已全力輸出）時，若不限制積分項持續累加，會造成「積分飽和」（windup）——誤差持續存在、積分持續增長，等到誤差終於反轉時，龐大的積分量需要很長時間才能消退，造成明顯的超調（overshoot）與振盪。<code>pidSetIntegralLimit()</code> 把這個上限做成可獨立設定的參數，讓每一軸、每一層迴路可以有不同的積分容忍度。</p>
+
+<h3 id="rate-gains">5.2 角速度環（內環）確認增益</h3>
+<span class="src-tag src-confirmed">platform_defaults_cf2.h</span>
+<table>
+<thead><tr><th>軸</th><th>\(K_p\)</th><th>\(K_i\)</th><th>\(K_d\)</th><th>\(K_{ff}\)</th><th>積分限幅</th></tr></thead>
+<tbody>
+<tr><td>Roll rate</td><td class="num">250.0</td><td class="num">500.0</td><td class="num">2.5</td><td class="num">0.0</td><td class="num">±33.3</td></tr>
+<tr><td>Pitch rate</td><td class="num">250.0</td><td class="num">500.0</td><td class="num">2.5</td><td class="num">0.0</td><td class="num">±33.3</td></tr>
+<tr><td>Yaw rate</td><td class="num">120.0</td><td class="num">16.7</td><td class="num">0.0</td><td class="num">0.0</td><td class="num">±166.7</td></tr>
+</tbody>
+</table>
+
+<h3 id="angle-gains">5.3 角度環（外環）確認增益</h3>
+<table>
+<thead><tr><th>軸</th><th>\(K_p\)</th><th>\(K_i\)</th><th>\(K_d\)</th><th>\(K_{ff}\)</th><th>積分限幅</th></tr></thead>
+<tbody>
+<tr><td>Roll</td><td class="num">6.0</td><td class="num">3.0</td><td class="num">0.0</td><td class="num">0.0</td><td class="num">±20.0</td></tr>
+<tr><td>Pitch</td><td class="num">6.0</td><td class="num">3.0</td><td class="num">0.0</td><td class="num">0.0</td><td class="num">±20.0</td></tr>
+<tr><td>Yaw</td><td class="num">6.0</td><td class="num">1.0</td><td class="num">0.35</td><td class="num">0.0</td><td class="num">±360.0</td></tr>
+</tbody>
+</table>
+
+<div class="note-box">
+<span class="label">增益數值的結構性觀察</span>
+<ul style="margin-bottom:0;">
+<li><strong>角度環 roll/pitch 的 \(K_d=0\)</strong>：外環完全不用微分項，只有 P+I。這是串級架構的典型設計——外環的「微分抑制」功能實質上由內環（角速度環）承擔，因為角速度本身就是角度的微分，內環直接量測並控制這個微分量，外環再疊加一個 D 項在數學上是部分冗餘的。</li>
+<li><strong>角速度環 \(K_i/K_p\) 比值遠高於角度環</strong>：roll rate 為 \(500/250=2\)，roll angle 為 \(3/6=0.5\)。內環積分增益相對比例增益的比重更高，反映內環需要更積極地消除穩態角速度誤差（例如馬達推力不對稱造成的持續偏轉力矩），而外環的角度誤差更依賴比例項的即時回應。</li>
+<li><strong>Yaw 角度環是唯一有非零 \(K_d\)（0.35）的角度環</strong>：因為 yaw rate 的內環增益（\(K_p=120\)）明顯低於 roll/pitch rate（250），yaw 通道的整體迴路增益天生較低，外環補上一點微分項是常見的補償手法。</li>
+</ul>
+</div>
+
+<h3 id="yaw-wraparound">5.4 Yaw 角度環繞處理</h3>
+<span class="src-tag src-confirmed">pid.c ／ controller_pid.c</span>
+<p>Yaw 角度以 \([-180°,180°]\) 表示時會在邊界產生不連續（例如從 179° 變到 -179°，物理上只轉了 2°，數值上卻是 358° 的跳變）。<code>pidUpdate()</code> 用 <code>isYawAngle</code> 旗標對誤差與微分量分別做環繞修正：</p>
+<div class="eq-derivation">
+\[
+e_{yaw} =
+\begin{cases}
+e - 360° & \text{if } e > 180° \\
+e + 360° & \text{if } e < -180° \\
+e & \text{otherwise}
+\end{cases}
+\]
+</div>
+<p>此外，<code>attitudeControllerGetYawMaxDelta()</code>（第1輪分析已確認於 <code>controller_pid.c</code>）額外限制 yaw 設定值與目前 yaw 的最大差距（<code>YAW_MAX_DELTA</code>，<span class="src-tag src-confirmed">預設值 0.0，即停用</span>），避免 velocity 模式下 yaw 設定值無限累積導致與實際 yaw 差距過大。</p>
+
+<h3 id="reset-logic">5.5 串級 Reset 邏輯與模式切換保護</h3>
+<p>第1輪分析已確認 <code>controller_pid.c</code> 在 <code>setpoint->mode.roll == modeVelocity</code> 切換瞬間呼叫 <code>attitudeControllerResetRollAttitudePID()</code>，本節可進一步用 <code>pidReset()</code> 的實作確認其效果：</p>
+<pre>void pidReset(PidObject* pid, const float actual)
+{
+  pid->error        = 0;
+  pid->prevMeasured = actual;   // 避免下一次微分計算對到「舊模式」的量測值
+  pid->integ        = 0;
+  pid->deriv        = 0;
+}</pre>
+<p><code>prevMeasured</code> 被設為目前實際量測值而非 0，這確保 reset 後第一次呼叫 <code>pidUpdate()</code> 時，微分項的 <code>delta = -(measured - prevMeasured)</code> 恰好為 0，不會因為 <code>prevMeasured</code> 殘留舊模式的值而在切換瞬間產生虛假的微分尖峰——這與 5.1 節「微分對量測值而非誤差微分」的設計動機一致，reset 邏輯必須配合這個設計正確初始化，否則模式切換本身就會製造出原本要避免的 derivative kick。</p>
+
+</section>
+<hr class="sec-div">
+
+<section id="position-cascade">
+<h2>6. 位置／速度串級 PID</h2>
+
+<h3 id="body-frame">6.1 全域座標到機體偏航座標的旋轉變換</h3>
+<span class="src-tag src-confirmed">position_controller_pid.c, positionController()</span>
+<pre>float cosyaw = cosf(state->attitude.yaw * (float)M_PI / 180.0f);
+float sinyaw = sinf(state->attitude.yaw * (float)M_PI / 180.0f);
+
+float setp_body_x =  setpoint->position.x * cosyaw + setpoint->position.y * sinyaw;
+float setp_body_y = -setpoint->position.x * sinyaw + setpoint->position.y * cosyaw;
+
+state_body_x =  state->position.x * cosyaw + state->position.y * sinyaw;
+state_body_y = -state->position.x * sinyaw + state->position.y * cosyaw;</pre>
+
+<p>位置控制器不直接在全域座標系（world frame）下運作，而是先把全域 X/Y 座標旋轉到「機體偏航對齊座標系」（body-yaw-aligned frame，只旋轉 yaw 角、不旋轉 roll/pitch）：</p>
+<div class="eq-derivation">
+\[
+\begin{bmatrix}x_{body}\\y_{body}\end{bmatrix}
+=
+\begin{bmatrix}\cos\psi & \sin\psi\\-\sin\psi & \cos\psi\end{bmatrix}
+\begin{bmatrix}x_{world}\\y_{world}\end{bmatrix}
+\]
+</div>
+<p>這是標準的二維旋轉矩陣（旋轉角 \(-\psi\)，即把世界座標系逆旋轉機體目前的偏航角，得到機體視角下的座標）。這樣做的理由：位置環的輸出（速度誤差 PID 的下一層）最終要轉換成 roll/pitch 姿態設定值，而 roll/pitch 的物理定義本來就是相對機體座標系（機頭方向）而非世界座標系——「向前傾」跟「向北傾」是兩回事，除非機頭剛好朝北。把位置誤差先轉到機體座標系，後續 PID 的輸出才能直接對應到「往前/往側邊傾斜多少度」，不需要在每一層都重複做座標轉換。</p>
+
+<h3 id="pos-vel-gains">6.2 確認增益：位置環與速度環</h3>
+<span class="src-tag src-confirmed">platform_defaults_cf2.h</span>
+
+<table>
+<thead><tr><th>迴路</th><th>軸</th><th>\(K_p\)</th><th>\(K_i\)</th><th>\(K_d\)</th><th>輸出上限</th></tr></thead>
+<tbody>
+<tr><td rowspan="3">位置環</td><td>X（機體）</td><td class="num">2.0</td><td class="num">0.0</td><td class="num">0.0</td><td class="num">\(v_{x,max}\times1.1\)</td></tr>
+<tr><td>Y（機體）</td><td class="num">2.0</td><td class="num">0.0</td><td class="num">0.0</td><td class="num">\(v_{y,max}\times1.1\)</td></tr>
+<tr><td>Z（全域）</td><td class="num">2.0</td><td class="num">0.5</td><td class="num">0.0</td><td class="num">\(\max(v_{z,max},0.5)\times1.1\)</td></tr>
+<tr><td rowspan="3">速度環（一般模式）</td><td>VX（機體）</td><td class="num">25.0</td><td class="num">1.0</td><td class="num">0.0</td><td class="num">pitch: \(p_{limit}\times1.1=22°\)</td></tr>
+<tr><td>VY（機體）</td><td class="num">25.0</td><td class="num">1.0</td><td class="num">0.0</td><td class="num">roll: \(r_{limit}\times1.1=22°\)</td></tr>
+<tr><td>VZ（全域，推力）</td><td class="num">25.0</td><td class="num">15.0</td><td class="num">0.0</td><td class="num">\(\text{UINT16\_MAX}/2/1000\)</td></tr>
+<tr><td>速度環 VZ（baro定高模式）</td><td>VZ</td><td class="num">3.0</td><td class="num">1.0</td><td class="num">1.5</td><td class="num">同上</td></tr>
+</tbody>
+</table>
+
+<div class="note-box">
+<span class="label">位置環積分增益為零的意義</span>
+X/Y 位置環的 \(K_i=0\)，只有 Z（高度）位置環有積分項（0.5）。這代表水平位置的穩態誤差消除完全依賴速度環（\(K_i=1.0\)）與更底層姿態環的累積效果，位置環本身只做「比例回饋」；而高度方向因為要對抗重力這個持續存在的已知擾動源，額外在位置環也加上積分項，構成雙重積分消除（位置環 Z 積分 + 速度環 VZ 積分 \(K_i=15\)，係數遠高於 X/Y 的 1.0），這是因為高度方向的穩態誤差來源（電池電壓下降造成推力衰減、氣壓計零點漂移）比水平方向更需要積極的積分修正。
+</div>
+
+<h3 id="thrust-mapping">6.3 速度環到推力指令的映射</h3>
+<span class="src-tag src-confirmed">position_controller_pid.c, velocityController()</span>
+<pre>float thrustRaw = runPid(state->velocity.z, &this.pidVZ, setpoint_velocity->z, DT);
+*thrust = thrustRaw * thrustScale + this.thrustBase;
+if (*thrust < this.thrustMin) { *thrust = this.thrustMin; }
+*thrust = constrain(*thrust, 0, UINT16_MAX);</pre>
+
+<div class="eq-derivation">
+\[
+\text{thrust} = \text{clip}\Big(\ \underbrace{\text{PID}_{VZ}(v_{z,sp}-v_z)}_{\text{速度誤差修正量，約 }\pm\text{個位數}} \times \underbrace{1000}_{\text{thrustScale}} \ +\ \underbrace{36000}_{\text{thrustBase，代表性懸停推力}}\ ,\ \ 20000,\ 65535\ \Big)
+\]
+</div>
+
+<p>這是一個<strong>加法式前饋 + 修正</strong>的結構：<code>thrustBase</code>（<span class="src-tag src-confirmed">36000，或 baro-hold 模式 38000</span>）是「預期懸停所需的基礎推力」，速度 PID 的輸出只需要修正「實際懸停推力與這個基準值的差距」，而不需要從零開始把整個懸停推力都用積分項堆出來。這大幅降低了 PID 積分項需要處理的動態範圍，也是為什麼 VZ 速度環積分限幅（見表格未列出，繼承 <code>DEFAULT_PID_INTEGRATION_LIMIT</code>）不需要設得特別大的原因——積分項只需要修正基準值的誤差，不需要憑空建構整個推力量級。<code>thrustMin</code>（<span class="src-tag src-confirmed">20000</span>）則確保即使速度 PID 輸出大幅負值（例如快速下降指令），推力也不會低到讓馬達完全停轉、失去姿態控制能力。</p>
+
+<h3 id="cascade-summary">6.4 四層串級的訊號流完整標註</h3>
+
+<pre>positionController()
+  ├─ 座標旋轉：world → body-yaw-aligned  [6.1節]
+  ├─ pidX/pidY: 位置誤差(機體x/y) → 速度設定值(機體x/y)  [Kp=2.0, Ki=0]
+  ├─ pidZ:      位置誤差(全域z)   → 速度設定值(全域z)     [Kp=2.0, Ki=0.5]
+  └─ 呼叫 velocityController(setpoint_velocity, state)
+       ├─ pidVX: 速度誤差(機體x) → attitude.pitch（取負號）  [Kp=25, Ki=1.0]
+       ├─ pidVY: 速度誤差(機體y) → attitude.roll（取負號）   [Kp=25, Ki=1.0]
+       ├─ pidVZ: 速度誤差(全域z) → thrust（加thrustBase偏移） [Kp=25, Ki=15]
+       └─ roll/pitch 限幅 ±rLimit/±pLimit（20°×1.1裕度）
+            ↓
+       attitude_t{roll, pitch, yaw} 作為第5節姿態環外環的設定值輸入</pre>
+
+<p>注意 <code>attitude->pitch = -runPid(...)</code> 與 <code>attitude->roll = -runPid(...)</code> 皆取負號——這是座標系定義的慣例修正（機體向前移動需要「向前傾」，但依右手座標系與旋轉角正負號定義，速度 PID 的原始輸出符號與姿態角定義的正負號相反，需要一個負號翻轉對齊），若移植這段邏輯到 CURIO 的座標系定義，這個負號必須依實際採用的座標慣例重新驗證，不可照抄。</p>
+
+</section>
+<hr class="sec-div">
+
+<section id="bandwidth-margin">
+<h2>7. 頻寬裕度計算推導</h2>
+
+<div class="note-box warn">
+<span class="label">本節數值定位</span>
+第4、5節的濾波器係數與 PID 增益已全數<span class="src-tag src-confirmed">確認</span>，可直接代入本節公式。但完整求出精確相位裕度還需要兩個未確認項：（1）機體轉動慣量 \(J\)，（2）PID 輸出（PWM 尺度）與物理力矩之間的混控增益 \(K_{mix}\)（即 Legacy 模式下 <code>control-&gt;roll</code> 每單位對應多少 N·m，需要馬達推力曲線在實際工作點的斜率，定義於未上傳的 <code>motors_def.c</code>）。本節先建立<strong>完整符號推導方法</strong>（不依賴這兩項，可直接套用任何實際系統），再用一組<span class="src-tag src-representative">代表性交越頻率</span>示範數值計算流程，並在7.6節建議用您熟悉的 relay feedback 實驗方法取得實際交越頻率，繞開這兩個未知項。
+</div>
+
+<h3 id="ol-tf">7.1 開迴路轉移函數建構（角速度環為例）</h3>
+
+<p>以 roll 軸角速度環為分析對象，這是整條串級中頻寬需求最高、相位裕度最緊繃的一環。開迴路轉移函數由四個環節串聯構成：</p>
+
+<div class="eq-derivation">
+\[
+L(s) = \underbrace{C(s)}_{\text{PID控制器}} \cdot \underbrace{G(s)}_{\text{機體轉動平面模型}} \cdot \underbrace{F(s)}_{\text{感測器LPF}} \cdot \underbrace{e^{-sT_d}}_{\text{總延遲}}
+\]
+
+<p class="step-label">控制器 \(C(s)\)（<span class="src-tag src-confirmed">confirmed，第5.2節</span>）</p>
+\[
+C(s) = K_p + \frac{K_i}{s} + K_d s
+\qquad (K_p=250,\ K_i=500,\ K_d=2.5)
+\]
+<p>注意：第4.4節已確認角速度環 D-filter 預設關閉，故 \(C(s)\) 的微分項不含額外濾波器極點，直接是理想微分 \(K_d s\)——這代表 \(C(s)\) 在高頻的相位貢獻會持續趨近 \(+90°\)，沒有濾波器把這個相位領先「收回來」，這是預設關閉 D-filter 對頻寬裕度的直接影響，7.5節會回頭討論這點的利弊。</p>
+
+<p class="step-label">機體平面模型 \(G(s)\)</p>
+<p>剛體繞單軸轉動的歐拉方程（忽略陀螺耦合項，單軸線性化近似）：\(J\dot\omega = \tau\)，故：</p>
+\[
+G(s) = \frac{1}{Js}
+\]
+<p>這是一個純積分器，物理意義是「力矩的時間積分等於角動量變化」。此模型忽略空氣阻尼項（實際上螺旋槳氣動阻尼會在 \(G(s)\) 分母多一個一階項 \(J s + b\)，但阻尼係數 \(b\) 通常遠小於慣性項在此頻段的貢獻，忽略不影響方法示範）。</p>
+
+<p class="step-label">感測器濾波器 \(F(s)\)（<span class="src-tag src-confirmed">第4.3節已推導</span>）</p>
+\[
+F(s) = \frac{\omega_c^2}{s^2+\sqrt2\,\omega_c s+\omega_c^2}, \qquad \omega_c = 2\pi \times 80\text{Hz} = 502.65\ \text{rad/s}
+\]
+
+<p class="step-label">總延遲 \(e^{-sT_d}\)（<span class="src-tag src-confirmed">第3節時序分析</span> + <span class="src-tag src-representative">ZOH半週期</span>）</p>
+\[
+T_d = \underbrace{300\ \mu s}_{\text{I2C+ISR+運算，confirmed量級}} + \underbrace{\frac{1}{2}\times\frac{1}{500\text{Hz}}}_{\text{ZOH半取樣延遲，representative頻率}} \approx 1.3\ \text{ms}
+\]
+<p>零階保持器（Zero-Order Hold）造成的延遲來自「數位控制器的輸出在下一次取樣前維持不變」，其平均相位延遲效應等效於半個取樣週期的純延遲，這是數位控制系統分析的標準近似（在交越頻率遠低於取樣頻率時成立，本系統交越頻率預期在數十Hz量級，取樣頻率500Hz，比例超過10倍，近似有效）。</p>
+
+</div>
+
+<h3 id="phase-contrib">7.2 各環節相位貢獻公式</h3>
+
+<div class="eq-derivation">
+<p class="step-label">積分器（來自 \(G(s)\)）</p>
+\[
+\angle G(j\omega) = -90°\quad(\text{對所有頻率恆定})
+\]
+
+<p class="step-label">PID 控制器相位</p>
+\[
+C(j\omega) = K_p + j\Big(K_d\omega - \frac{K_i}{\omega}\Big)
+\quad\Rightarrow\quad
+\angle C(j\omega) = \arctan\!\left(\frac{K_d\omega-K_i/\omega}{K_p}\right)
+\]
+<p>低頻時 \(K_i/\omega\) 項主導，相位趨近 \(-90°\)（積分器行為）；高頻時 \(K_d\omega\) 項主導，相位趨近 \(+90°\)（微分器行為）；中間必有一個頻率使虛部為零、相位恰為 \(0°\)，稱為 PID 的「相位領先中心頻率」：</p>
+\[
+\omega_{PID,0} = \sqrt{\frac{K_i}{K_d}} = \sqrt{\frac{500}{2.5}} = \sqrt{200} \approx 14.14\ \text{rad/s} \approx 2.25\text{Hz}
+\]
+
+<p class="step-label">感測器濾波器相位（<span class="src-tag src-confirmed">第4.3節公式</span>）</p>
+\[
+\angle F(j\omega) = -\arctan\!\left(\frac{\sqrt2\,(\omega/\omega_c)}{1-(\omega/\omega_c)^2}\right)
+\]
+
+<p class="step-label">延遲相位</p>
+\[
+\angle e^{-j\omega T_d} = -\omega T_d \ \text{[rad]} = -360°\times f\times T_d
+\]
+</div>
+
+<h3 id="worked-example">7.3 代表性交越頻率下的數值計算</h3>
+
+<div class="note-box warn">
+<span class="label">交越頻率的取得方式</span>
+精確交越頻率 \(\omega_{gc}\)（\(|L(j\omega_{gc})|=1\) 之處）需要 \(J\) 與 \(K_{mix}\) 才能從 \(|L(j\omega)|\) 反解。此處採用文獻中常見的 Crazyflie 級小型四軸機角速度環交越頻率量級（約 20–30Hz）作為<span class="src-tag src-representative">代表性示範值</span>，取 \(f_{gc}=25\text{Hz}\)（\(\omega_{gc}=157.08\text{ rad/s}\)）示範完整計算流程；7.6節會說明如何用實驗方法取得您實際系統的精確交越頻率，取代這個示範值。
+</div>
+
+<table>
+<thead><tr><th>環節</th><th>計算</th><th>相位貢獻</th></tr></thead>
+<tbody>
+<tr>
+  <td>積分器 \(G(j\omega)\)</td>
+  <td>恆定</td>
+  <td class="num">−90.00°</td>
+</tr>
+<tr>
+  <td>PID 控制器 \(C(j\omega)\)</td>
+  <td>\(\arctan\!\big(\frac{2.5\times157.08-500/157.08}{250}\big)=\arctan\!\big(\frac{392.7-3.18}{250}\big)\)</td>
+  <td class="num">+57.32°</td>
+</tr>
+<tr>
+  <td>感測器LPF \(F(j\omega)\)，\(x=25/80=0.3125\)</td>
+  <td>\(-\arctan\!\big(\frac{\sqrt2\times0.3125}{1-0.3125^2}\big)=-\arctan(0.4897)\)</td>
+  <td class="num">−26.10°</td>
+</tr>
+<tr>
+  <td>總延遲，\(T_d=1.3\text{ms}\)</td>
+  <td>\(-360°\times25\times0.0013\)</td>
+  <td class="num">−11.70°</td>
+</tr>
+<tr>
+  <td><strong>開迴路總相位 \(\angle L(j\omega_{gc})\)</strong></td>
+  <td colspan="1">加總</td>
+  <td class="num"><strong>−70.48°</strong></td>
+</tr>
+</tbody>
+</table>
+
+<div class="eq-derivation">
+<p class="step-label">相位裕度定義與計算</p>
+\[
+PM = 180° + \angle L(j\omega_{gc}) = 180° + (-70.48°) = 109.52°
+\]
+</div>
+
+<div class="note-box">
+<span class="label">結果判讀</span>
+在此代表性交越頻率下，相位裕度高達約 \(110°\)，遠超過控制系統設計常見的安全下限（\(45°\)–\(60°\)）。這個結果主要來自 PID 微分項在此頻率貢獻的顯著相位領先（\(+57.32°\)），部分抵銷了積分器（\(-90°\)）、感測器濾波器（\(-26.1°\)）與延遲（\(-11.7°\)）的相位落後。這樣的數字組合本身即說明：<strong>\(K_d\) 的相位領先效果，是這套增益配置能撐住感測器延遲與濾波器相位落後的主要來源</strong>，也解釋了為何角速度環的 \(K_d\)（2.5）雖然數值上遠小於 \(K_p\)（250），卻仍是穩定性關鍵的一環，不可忽視其重要性。惟此數字高度依賴代表性交越頻率的假設，實際數字務必以7.6節實驗方法驗證。
+</div>
+
+<h3 id="d-filter-sensitivity">7.4 若啟用角速度環 D-filter（30Hz）：相位裕度的損失量化</h3>
+
+<p>第4.4節指出角速度環 D-filter 預設關閉。若使用者依 <code>rateFiltEn</code> 參數開啟（截止頻率 30Hz，<span class="src-tag src-confirmed">確認值</span>），\(C(s)\) 的微分項會多一個由 <code>lpf2p</code>（第4.2節同一濾波器）造成的額外相位落後，在 \(f=25\text{Hz}\)、\(f_c=30\text{Hz}\)（\(x=0.833\)）之下：</p>
+<div class="eq-derivation">
+\[
+\Delta\phi_{Dfilter} = -\arctan\!\left(\frac{\sqrt2\times0.833}{1-0.833^2}\right) = -\arctan\!\left(\frac{1.178}{0.306}\right) = -75.4°
+\]
+</div>
+<p>這是一個非常顯著的額外相位落後——幾乎與交越頻率本身同量級（30Hz 濾波器在 25Hz 已經逼近其截止頻率），若疊加進7.3節的計算，相位裕度會從 \(109.52°\) 驟降至約 \(34°\)，逼近甚至跌破一般設計安全下限。這正是為什麼 <code>ATTITUDE_RATE_LPF_ENABLE</code> 預設關閉的合理工程理由：D-filter 的截止頻率（30Hz）與代表性交越頻率（25Hz）過於接近，貿然開啟反而可能讓迴路更接近不穩定邊緣，除非同時調降迴路增益或提高濾波器截止頻率做搭配調整。<strong>這是本文件中「濾波器降雜訊」與「濾波器降相位裕度」兩個效果直接對撞的具體數值案例</strong>，對 CURIO 課程教材而言，這組對照計算（開/關 D-filter 導致 \(109.52°\to34°\) 的裕度差異）本身就是一個很好的教學示範：濾波器不是加了就穩定，加錯位置反而可能讓系統更接近失穩邊界。</p>
+
+<h3 id="empirical-recommendation">7.5 建議：以 Relay Feedback 實驗取代純分析模型</h3>
+
+<p>7.3節的交越頻率是文獻代表值，非本系統實際量測值，主因是 \(J\) 與 \(K_{mix}\) 未知。與其花時間精確量測轉動慣量與混控增益再代入本節公式，更直接的做法是用<strong>繼電回授自激振盪（relay feedback）</strong>直接量測系統在臨界穩定點的實際交越頻率與增益——這正是您已經在 CURIO 平台上發展的 Åström–Hägglund 方法：在角速度環迴路中插入一個 relay（bang-bang 開關），系統會在某個頻率下自發產生等幅振盪，該振盪頻率就是相位滯後恰為 \(180°\) 處的頻率（即 \(\angle L(j\omega_{osc})=-180°\)），振盪幅值與 relay 幅值的比例則直接給出該頻率下的開迴路增益 \(|L(j\omega_{osc})|\)。這個實驗量到的單一資料點，比本節整條需要 \(J\) 與 \(K_{mix}\) 才能畫出的解析 Bode 曲線更可靠，因為它是系統的直接量測結果，不受簡化平面模型（忽略空氣阻尼、忽略陀螺耦合）誤差影響。若您要把本文件用於 CURIO 課程教材，建議在本節之後銜接您既有的 relay feedback autotuning 教材，形成「解析法建立直覺 → 實驗法取得精確數字」的完整教學閉環。</p>
+
+</section>
+<hr class="sec-div">
+
+<section id="conclusion">
+<h2>8. 總結：完整延遲鏈與相位裕度總表</h2>
+
+<h3>8.1 訊號鏈延遲總表</h3>
+<table>
+<thead><tr><th>階段</th><th>延遲量級</th><th>確認狀態</th></tr></thead>
+<tbody>
+<tr><td>BMI088 中斷→ISR→sensorsTask 喚醒</td><td class="num">&lt; 5 µs</td><td class="src-tag src-confirmed">邏輯確認，量級估算</td></tr>
+<tr><td>I2C burst read（陀螺儀+加速度計）</td><td class="num">≈ 270–300 µs</td><td class="src-tag src-confirmed">邏輯確認，量級估算</td></tr>
+<tr><td>零偏校正/座標對齊/LPF/enqueue</td><td class="num">&lt; 10 µs</td><td class="src-tag src-representative">量級估算</td></tr>
+<tr><td>感測器前端 LPF 相位落後（80Hz，於25Hz處）</td><td class="num">−26.1°</td><td class="src-tag src-confirmed">精確計算</td></tr>
+<tr><td>ZOH半週期（代表性500Hz迴路）</td><td class="num">1 ms → −9°（於25Hz）</td><td class="src-tag src-representative">迴路頻率為代表值</td></tr>
+<tr><td>角速度環 PID 相位領先（於25Hz）</td><td class="num">+57.32°</td><td class="src-tag src-confirmed">精確計算（增益confirmed）</td></tr>
+<tr><td>代表性交越頻率下相位裕度</td><td class="num">≈ 109.5°</td><td class="src-tag src-representative">交越頻率為代表值，公式與係數confirmed</td></tr>
+</tbody>
+</table>
+
+<h3>8.2 三個對 CURIO 平台最具參考價值的發現</h3>
+<ol>
+<li><strong>雙 semaphore 交握模式</strong>（第2.3節）：把「感測器有新資料」與「這輪資料已處理完成」分成兩個獨立同步點，避免控制迴圈讀到處理到一半的資料。</li>
+<li><strong>感測器前端濾波與 PID 內部濾波是兩層獨立系統</strong>（第4.4節），且姿態環的 PID 濾波器在確認的預設組態下是關閉的——雜訊抑制實際上完全壓在感測器前端這一層，這個「預設關閉」的組態選擇本身就隱含一次未言明的頻寬裕度權衡（第7.4節已量化）。</li>
+<li><strong>積分限幅式 anti-windup 搭配對量測值微分</strong>（第5.1節）是簡單但需要正確搭配 reset 邏輯（第5.5節）才不會在模式切換瞬間自我破壞的設計，兩者必須視為同一套機制的兩半，不可分開移植。</li>
+</ol>
+
+</section>
+<hr class="sec-div">
+
+<section id="appendix">
+<h2>附錄：原始碼檔案總覽</h2>
+
+<p class="lede">依訊號鏈層級分類，列出本系列分析涵蓋的全部原始碼檔案，供對照查閱。</p>
+
+<h3>A.1 開機與系統框架</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>main.c</code></td><td>程式進入點，platformInit → systemLaunch → vTaskStartScheduler</td></tr>
+<tr><td><code>system.c</code></td><td>systemTask，完整模組初始化順序與自檢</td></tr>
+<tr><td><code>config.h</code></td><td>FreeRTOS 主頻、task 優先權與堆疊大小總表</td></tr>
+<tr><td><code>platform.h</code></td><td>感測器 plugin enum、平台設定結構</td></tr>
+<tr><td><code>watchdog.c</code></td><td>獨立硬體看門狗（IWDG），LSI震盪器計時</td></tr>
+</tbody>
+</table>
+
+<h3>A.2 感測器層</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>sensors.c</code></td><td>感測器 plugin 分派表，<code>EXTI14_Callback</code></td></tr>
+<tr><td><code>sensors_bmi088_bmp3xx.c</code></td><td>BMI088+BMP3xx 中斷驅動主線程，濾波器套用</td></tr>
+<tr><td><code>sensors_bmi088_common.h</code></td><td>I2C/SPI 後端介面宣告</td></tr>
+<tr><td><code>sensors_bmi088_i2c.c</code></td><td>I2C 匯流排後端綁定</td></tr>
+<tr><td><code>sensors_bosch.c</code></td><td>舊款 BMI160/BMI055 純輪詢式驅動（對照組）</td></tr>
+<tr><td><code>bmi088_accel.c</code> / <code>bmi088_gyro.c</code> / <code>bmi088_fifo.c</code></td><td>Bosch 官方 register-level 驅動（本系列未逐行深入）</td></tr>
+<tr><td><code>filter.c</code></td><td>二階 IIR（<code>lpf2p</code>）濾波器係數計算與套用</td></tr>
+</tbody>
+</table>
+
+<h3>A.3 狀態估測層</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>estimator.c</code></td><td>估測器 plugin 分派、measurement queue 管理</td></tr>
+<tr><td><code>estimator_complementary.c</code></td><td>250Hz姿態/100Hz位置降頻執行邏輯</td></tr>
+<tr><td><code>sensfusion6.c</code></td><td>Mahony/Madgwick 姿態融合核心</td></tr>
+</tbody>
+</table>
+
+<h3>A.4 控制層</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>controller.c</code></td><td>控制器 plugin 分派表</td></tr>
+<tr><td><code>controller_pid.c</code></td><td>姿態串級呼叫順序、模式切換、thrust=0重置邏輯</td></tr>
+<tr><td><code>attitude_pid_controller.c</code></td><td>角度環/角速度環 PID 物件、增益、濾波器開關</td></tr>
+<tr><td><code>position_controller_pid.c</code></td><td>位置環/速度環 PID、機體座標旋轉、推力映射</td></tr>
+<tr><td><code>pid.c</code></td><td>通用 PID 更新演算法核心</td></tr>
+<tr><td><code>platform_defaults_cf2.h</code></td><td>CF2 平台全部 PID 增益與物理常數確認值</td></tr>
+<tr><td><code>platform_defaults.h</code></td><td>跨平台預設值與 fallback 定義</td></tr>
+</tbody>
+</table>
+
+<h3>A.5 致動輸出層</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>power_distribution_quadrotor.c</code></td><td>四種混控模式、等比例降額飽和保護</td></tr>
+<tr><td><code>power_distribution_flapper.c</code></td><td>撲翼機構混控（對照組，證明介面平台無關）</td></tr>
+<tr><td><code>motors.c</code></td><td>Timer PWM／DSHOT 輸出、電池電壓補償反解</td></tr>
+</tbody>
+</table>
+
+<h3>A.6 安全監督與指令仲裁層</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>supervisor.c</code></td><td>物理量測→條件位元轉譯，setpoint override</td></tr>
+<tr><td><code>supervisor_state_machine.c</code></td><td>宣告式狀態機引擎，11狀態轉移表</td></tr>
+<tr><td><code>commander.c</code></td><td>多來源 setpoint 優先權仲裁</td></tr>
+<tr><td><code>extrx.c</code></td><td>外接RC接收機正規化為 setpoint_t</td></tr>
+<tr><td><code>planner.c</code></td><td>高階軌跡規劃狀態機，7階多項式插值</td></tr>
+</tbody>
+</table>
+
+<h3>A.7 通訊層</h3>
+<table>
+<thead><tr><th>檔案</th><th>角色</th></tr></thead>
+<tbody>
+<tr><td><code>crtp.c</code></td><td>CRTP封包路由，port-based多路分工</td></tr>
+<tr><td><code>radiolink.c</code></td><td>CRTP↔nRF51 syslink橋接</td></tr>
+<tr><td><code>param_task.c</code></td><td>參數TOC查詢/讀寫/Flash持久化</td></tr>
+<tr><td><code>msp.c</code></td><td>（本系列未深入分析）</td></tr>
+</tbody>
+</table>
+
+</section>
+
+<footer>
+  本文件依據使用者上傳之 Crazyflie 韌體原始碼片段整理而成，數學推導與延遲估算方法可直接套用至其他 Cortex-M + I2C IMU 架構（含 RP2354A 等雙核心平台），惟需以實際硬體量測值重新代入數值。文件中「代表性數值」段落請以實際系統之 <code>platform_defaults.h</code>、<code>pid.c</code>、<code>filter.c</code> 內容校正後方可作為調參依據。
+</footer>
+
+</main>
+</div>
+
+<script>
+  // 自動產生目錄（僅抓 h2 / h3）
+  document.addEventListener('DOMContentLoaded', function() {
+    const toc = document.getElementById('toc-list');
+    const headers = document.querySelectorAll('main h2, main h3');
+    headers.forEach(function(h, i){
+      if(!h.id){ h.id = 'sec-' + i; }
+      const li = document.createElement('li');
+      if(h.tagName === 'H3'){ li.className = 'lvl2'; }
+      const a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.textContent;
+      li.appendChild(a);
+      toc.appendChild(li);
+    });
+  });
+</script>
+
+</body>
+</html>
