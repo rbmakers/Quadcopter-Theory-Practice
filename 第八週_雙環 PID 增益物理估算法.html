@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CURIO 微型四軸飛行器雙環 PID 增益物理估算法與系統識別理論</title>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    processEnvironments: true
+  },
+  options: {
+    skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+  }
+};
+</script>
+<style>
+:root {
+  --primary: #1a365d;
+  --secondary: #2c5282;
+  --accent: #3182ce;
+  --bg: #f7fafc;
+  --card: #ffffff;
+  --text: #2d3748;
+  --text-light: #718096;
+  --border: #e2e8f0;
+  --success: #38a169;
+  --warning: #d69e2e;
+  --danger: #e53e3e;
+  --code-bg: #edf2f7;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: "Noto Sans CJK TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.8;
+  font-size: 17px;
+}
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.hero {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: white;
+  padding: 60px 0 40px;
+  text-align: center;
+}
+.hero h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  line-height: 1.3;
+}
+.hero .subtitle {
+  font-size: 1.1rem;
+  opacity: 0.9;
+  max-width: 700px;
+  margin: 0 auto 20px;
+}
+.hero .meta {
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+.nav-bar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.nav-title {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 0.95rem;
+}
+.nav-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nav-links a {
+  color: var(--text-light);
+  text-decoration: none;
+  font-size: 0.85rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.nav-links a:hover {
+  background: var(--bg);
+  color: var(--accent);
+}
+.section {
+  background: var(--card);
+  margin: 24px 0;
+  padding: 32px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.section h2 {
+  font-size: 1.5rem;
+  color: var(--primary);
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+}
+.section h3 {
+  font-size: 1.2rem;
+  color: var(--secondary);
+  margin: 28px 0 12px;
+}
+.section h4 {
+  font-size: 1.05rem;
+  color: var(--text);
+  margin: 20px 0 10px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.95rem;
+  overflow-x: auto;
+  display: block;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  text-align: left;
+}
+th {
+  background: var(--code-bg);
+  font-weight: 600;
+  color: var(--primary);
+}
+tr:nth-child(even) { background: #fafafa; }
+.equation {
+  background: var(--code-bg);
+  border-left: 4px solid var(--accent);
+  padding: 20px 24px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  overflow-x: auto;
+  font-size: 1.15rem;
+}
+/* MathJax formula sizing */
+mjx-container {
+  font-size: 1.25em !important;
+}
+mjx-container svg {
+  display: inline-block;
+}
+/* Inline math */
+.MathJax {
+  font-size: 1.15em !important;
+}
+/* Display math */
+mjx-container[display="true"] {
+  font-size: 1.3em !important;
+  margin: 0.8em 0 !important;
+}
+.box {
+  padding: 16px 20px;
+  border-radius: 8px;
+  margin: 16px 0;
+  font-size: 0.95rem;
+}
+.box.info { background: #ebf8ff; border-left: 4px solid var(--accent); }
+.box.success { background: #f0fff4; border-left: 4px solid var(--success); }
+.box.warning { background: #fffaf0; border-left: 4px solid var(--warning); }
+.box.danger { background: #fff5f5; border-left: 4px solid var(--danger); }
+.box-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.9em;
+}
+pre {
+  background: #2d3748;
+  color: #e2e8f0;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 12px 0;
+}
+ul, ol { margin: 12px 0 12px 24px; }
+li { margin: 6px 0; }
+.toc {
+  background: var(--card);
+  padding: 24px 32px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  margin: 24px 0;
+}
+.toc h2 { font-size: 1.2rem; margin-bottom: 16px; border: none; padding: 0; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 4px 0; }
+.toc a { color: var(--accent); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+.toc .toc-h2 { font-weight: 600; margin-top: 10px; }
+.toc .toc-h3 { padding-left: 20px; font-size: 0.95rem; }
+.footer {
+  text-align: center;
+  padding: 40px 24px;
+  color: var(--text-light);
+  font-size: 0.9rem;
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+}
+@media print {
+  .nav-bar, .toc { display: none; }
+  .section { box-shadow: none; margin: 12px 0; page-break-inside: avoid; }
+  body { font-size: 11pt; background: white; }
+}
+@media (max-width: 640px) {
+  .hero h1 { font-size: 1.4rem; }
+  .section { padding: 20px; }
+  .nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="container">
+    <h1>CURIO 微型四軸飛行器<br>雙環 PID 增益物理估算法與系統識別理論</h1>
+    <p class="subtitle">Roll / Pitch 內外環 PID 控制器：從幾何參數到閉迴路穩定性的完整物理推導、數位控制延遲分析與實驗校準指南</p>
+    <p class="meta">綜合完整版 v6 | 適用機型：CURIO 58g X 型微型四軸 | 最後更新：2026-08-06</p>
+  </div>
+</div>
+
+<nav class="nav-bar">
+  <div class="nav-inner">
+    <div class="nav-title">CURIO PID v6</div>
+    <div class="nav-links">
+      <a href="#sec-params">參數</a>
+      <a href="#sec-geometry">幾何慣量</a>
+      <a href="#sec-thrust">推力</a>
+      <a href="#sec-plant">被控對象</a>
+      <a href="#sec-pid">雙環 PID</a>
+      <a href="#sec-delay">延遲</a>
+      <a href="#sec-bandwidth">頻寬</a>
+      <a href="#sec-design">設計</a>
+      <a href="#sec-verify">驗證</a>
+      <a href="#sec-calibration">校準</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+<div class="toc">
+  <h2>目錄</h2>
+  <ul>
+    <li class="toc-h2"><a href="#sec-params">1. 符號系統與單位約定</a></li>
+    <li class="toc-h2"><a href="#sec-geometry">2. 機體幾何與轉動慣量張量</a></li>
+    <li class="toc-h3"><a href="#sec-geometry-1">2.1 X 型四軸幾何關係</a></li>
+    <li class="toc-h3"><a href="#sec-geometry-2">2.2 平行軸定理與慣量分解</a></li>
+    <li class="toc-h3"><a href="#sec-geometry-3">2.3 機體總轉動慣量合成</a></li>
+    <li class="toc-h2"><a href="#sec-thrust">3. 致動器推力模型與混控器設計</a></li>
+    <li class="toc-h3"><a href="#sec-thrust-1">3.1 帶死區的二次推力模型</a></li>
+    <li class="toc-h3"><a href="#sec-thrust-2">3.2 局部線性化與工作點增益 k_T</a></li>
+    <li class="toc-h3"><a href="#sec-thrust-3">3.3 混控器對稱性與等效扭矩增益 k_eff</a></li>
+    <li class="toc-h3"><a href="#sec-thrust-4">3.4 系統等效角加速度增益 K</a></li>
+    <li class="toc-h3"><a href="#sec-thrust-5">3.5 核心樞紐物理意義</a></li>
+    <li class="toc-h2"><a href="#sec-plant">4. 被控對象動態模型</a></li>
+    <li class="toc-h3"><a href="#sec-plant-1">4.1 剛體旋轉動力學</a></li>
+    <li class="toc-h3"><a href="#sec-plant-2">4.2 氣動阻尼物理機制</a></li>
+    <li class="toc-h3"><a href="#sec-plant-3">4.3 連續時間狀態空間表示</a></li>
+    <li class="toc-h3"><a href="#sec-plant-4">4.4 傳遞函數 G_p,SI(s) 的逐步導證</a></li>
+    <li class="toc-h2"><a href="#sec-pid">5. 雙環串接 PID 控制器架構</a></li>
+    <li class="toc-h2"><a href="#sec-closed">6. 閉迴路傳遞函數與穩定性分析</a></li>
+    <li class="toc-h3"><a href="#sec-closed-1">6.1 理想連續時間模型</a></li>
+    <li class="toc-h3"><a href="#sec-closed-2">6.2 二階標準式對比與阻尼分解</a></li>
+    <li class="toc-h3"><a href="#sec-closed-3">6.3 純 P-P 模型的絕對穩定性定理</a></li>
+    <li class="toc-h3"><a href="#sec-closed-4">6.4 定理的物理意義與實務矛盾</a></li>
+    <li class="toc-h2"><a href="#sec-delay">7. 致動器延遲與高階動態效應</a></li>
+    <li class="toc-h3"><a href="#sec-delay-1">7.1 一階馬達遲滯模型</a></li>
+    <li class="toc-h3"><a href="#sec-delay-2">7.2 三階系統與勞斯-霍維茨判準</a></li>
+    <li class="toc-h3"><a href="#sec-delay-3">7.3 臨界內環增益閉形式解</a></li>
+    <li class="toc-h3"><a href="#sec-delay-4">7.4 數位控制系統延遲</a></li>
+    <li class="toc-h3"><a href="#sec-delay-5">7.5 頻寬設計準則：相位邊界限制</a></li>
+    <li class="toc-h3"><a href="#sec-delay-6">7.6 頻寬與正弦波頻率</a></li>
+    <li class="toc-h3"><a href="#sec-delay-7">7.7 空心杯馬達瓶頸</a></li>
+    <li class="toc-h2"><a href="#sec-bandwidth">8. 頻寬與自然頻率的數學關聯</a></li>
+    <li class="toc-h2"><a href="#sec-design">9. 增益合成方法論與完整設計</a></li>
+    <li class="toc-h3"><a href="#sec-design-1">9.1 設計目標選擇</a></li>
+    <li class="toc-h3"><a href="#sec-design-2">9.2 精確閉形式合成（含氣動阻尼）</a></li>
+    <li class="toc-h3"><a href="#sec-design-3">9.3 含延遲穩定性驗證</a></li>
+    <li class="toc-h3"><a href="#sec-design-4">9.4 PID 擴充項設計</a></li>
+    <li class="toc-h2"><a href="#sec-verify">10. 數值驗證與最終參數</a></li>
+    <li class="toc-h2"><a href="#sec-calibration">11. 系統識別與實驗校準 SOP</a></li>
+    <li class="toc-h2"><a href="#sec-advanced">12. 進階主題</a></li>
+    <li class="toc-h2"><a href="#sec-appendix">13. 附錄</a></li>
+  </ul>
+</div>
+
+<div class="section" id="sec-params">
+<h2>1. 符號系統與單位約定</h2>
+
+<h3>1.1 機體坐標系定義</h3>
+<p>採用 FRD（Forward-Right-Down）機體坐標系：</p>
+<table>
+<tr><th>軸向</th><th>名稱</th><th>正向定義</th></tr>
+<tr><td>x 軸</td><td>Roll 軸</td><td>指向機頭方向，正 Roll 為右側下沉（右翻）</td></tr>
+<tr><td>y 軸</td><td>Pitch 軸</td><td>指向機身右側，正 Pitch 為機頭下沉（前俯）</td></tr>
+<tr><td>z 軸</td><td>Yaw 軸</td><td>指向機身下方，正 Yaw 為機頭右偏（順時針俯視）</td></tr>
+</table>
+<p>馬達編號採用 X 型標準配置：M1 右前（CCW）、M2 右後（CW）、M3 左後（CCW）、M4 左前（CW）。</p>
+
+<h3>1.2 參數符號與單位定義表</h3>
+<table>
+<tr><th>符號</th><th>物理意義</th><th>SI 單位</th><th>數值/備註</th></tr>
+<tr><td>$m$</td><td>無人機總質量</td><td>kg</td><td>0.058</td></tr>
+<tr><td>$2r$</td><td>對角線馬達軸距</td><td>m</td><td>0.12</td></tr>
+<tr><td>$l$</td><td>姿態軸有效力臂</td><td>m</td><td>$r/\sqrt{2} \approx 0.0424$</td></tr>
+<tr><td>$I_{xx}, I_{yy}, I_{zz}$</td><td>三軸轉動慣量</td><td>$\text{kg}\cdot\text{m}^2$</td><td>由平行軸定理計算</td></tr>
+<tr><td>$c''$</td><td>推力二次係數</td><td>$\text{N/count}^2$</td><td>$1.481\times 10^{-5}$</td></tr>
+<tr><td>$\text{PWM}_{max}$</td><td>最大 PWM 輸出值</td><td>count</td><td>216</td></tr>
+<tr><td>$\text{PWM}_0$</td><td>PWM 死區偏移</td><td>count</td><td>$\approx 20$</td></tr>
+<tr><td>$k_T$</td><td>推力局部線性化斜率</td><td>N/count</td><td>$k_T = \partial T/\partial \text{PWM}$</td></tr>
+<tr><td>$k_{eff}$</td><td>混控器等效扭矩增益</td><td>$\text{N}\cdot\text{m}/\text{count}$</td><td>$4lk_T$</td></tr>
+<tr><td>$K$</td><td>系統等效角加速度增益</td><td>$(\text{deg/s}^2)/\text{count}$</td><td>$\frac{k_{eff}}{I} \cdot \frac{180}{\pi}$</td></tr>
+<tr><td>$b_{aero}$</td><td>氣動阻尼係數</td><td>$\text{N}\cdot\text{m}\cdot\text{s}/\text{rad}$</td><td>$\approx 1.2\times 10^{-4}$</td></tr>
+<tr><td>$\tau_m$</td><td>馬達一階等效時間常數</td><td>s</td><td>$\approx 10$ ms</td></tr>
+<tr><td>$T_s$</td><td>內環取樣週期</td><td>s</td><td>0.001（1000Hz）</td></tr>
+<tr><td>$T_{s,o}$</td><td>外環取樣週期</td><td>s</td><td>0.005（200Hz）</td></tr>
+<tr><td>$K_{p,o}$</td><td>外環（Angle）比例增益</td><td>1/s</td><td>$\omega_{cmd}=K_{p,o}(\theta_{cmd}-\theta)$</td></tr>
+<tr><td>$K_{p,i}$</td><td>內環（Rate）比例增益</td><td>count/(deg/s)</td><td>$u=K_{p,i}(\omega_{cmd}-\omega)$</td></tr>
+<tr><td>$K_{i,i}$</td><td>內環積分增益</td><td>count/(deg·s)</td><td>—</td></tr>
+<tr><td>$K_{d,i}$</td><td>內環微分增益</td><td>count·s/deg</td><td>通常串接低通濾波器</td></tr>
+<tr><td>$\mathbf{u}$</td><td><strong>控制輸入向量</strong></td><td>count</td><td>$\mathbf{u} = [u_{thrust}, u_{roll}, u_{pitch}, u_{yaw}]^T$，混控器輸入</td></tr>
+<tr><td>$\mathbf{u}_{roll}$</td><td><strong>Roll 軸控制輸入</strong></td><td>count</td><td>產生 Roll 力矩的差動 PWM 指令，$\tau_{roll} = k_{eff} \cdot u_{roll}$</td></tr>
+<tr><td>$\mathbf{U}(s)$</td><td><strong>控制輸入拉氏變換</strong></td><td>count</td><td>$u(t)$ 的拉普拉斯變換，$\mathcal{L}\{u(t)\} = U(s)$</td></tr>
+<tr><td>$\omega_n$</td><td>閉迴路等效自然頻率</td><td>rad/s</td><td>設計目標參數</td></tr>
+<tr><td>$\zeta$</td><td>閉迴路等效阻尼比</td><td>—</td><td>設計目標參數</td></tr>
+</table>
+
+<h3>1.3 單位一致性聲明</h3>
+<p>本文嚴格區分兩套單位系統：</p>
+<ul>
+<li><strong>物理動力學（SI 制）</strong>：角度以 rad 為單位，角速度以 rad/s 為單位。</li>
+<li><strong>飛控控制器內部單位</strong>：角度以 deg 為單位，角速度以 deg/s 為單位（符合 Betaflight / CURIO 慣例）。</li>
+</ul>
+<div class="equation">
+$$K\left[\frac{\text{deg/s}^2}{\text{count}}\right] = \frac{k_{eff}}{I}\left[\frac{\text{rad/s}^2}{\text{count}}\right] \times \frac{180}{\pi}\left[\frac{\text{deg}}{\text{rad}}\right]$$
+</div>
+</div>
+
+<div class="section" id="sec-geometry">
+<h2>2. 機體幾何與轉動慣量張量</h2>
+
+<h3 id="sec-geometry-1">2.1 X 型四軸幾何關係</h3>
+<p>對角線馬達間距 $2r = 0.12$ m，半徑 $r = 0.06$ m。對於 X 型配置，馬達位置與姿態旋轉軸夾角為 $45^\circ$：</p>
+<div class="equation">
+$$l = r\sin(45^\circ) = \frac{r}{\sqrt{2}} = \frac{0.06}{\sqrt{2}} \approx 0.042426\,\text{m}$$
+</div>
+
+<h3 id="sec-geometry-2">2.2 平行軸定理與慣量分解</h3>
+<p>轉動慣量由三部分組成：馬達組件、中央機架/飛控板、電池。</p>
+
+<h4>(1) 馬達點質量貢獻</h4>
+<p>每顆馬達質量 $m_{motor} = 0.005$ kg：</p>
+<div class="equation">
+$$I_{motors,xx} = 4m_{motor}l^2 = 4 \times 0.005 \times (0.042426)^2 = 3.60 \times 10^{-5}\,\text{kg}\cdot\text{m}^2$$
+$$I_{motors,yy} = 3.60 \times 10^{-5}\,\text{kg}\cdot\text{m}^2, \quad I_{motors,zz} = 7.20 \times 10^{-5}\,\text{kg}\cdot\text{m}^2$$
+</div>
+
+<h4>(2) 中央機架與飛控板</h4>
+<p>剩餘機構質量 $m_{rest} = 0.025$ kg，假設為半徑 $R_{rest} = 0.03$ m 的薄圓盤：</p>
+<div class="equation">
+$$I_{rest,xx} = I_{rest,yy} = \frac{1}{4}m_{rest}R_{rest}^2 = 5.625 \times 10^{-6}\,\text{kg}\cdot\text{m}^2$$
+$$I_{rest,zz} = \frac{1}{2}m_{rest}R_{rest}^2 = 1.125 \times 10^{-5}\,\text{kg}\cdot\text{m}^2$$
+</div>
+
+<h4>(3) 電池慣量（長方體）</h4>
+<p>電池質量 $m_{batt} = 0.013$ kg，尺寸 $L_{batt} = 0.035$ m、$W_{batt} = 0.012$ m、$H_{batt} \approx 0.008$ m：</p>
+<div class="equation">
+$$I_{batt,xx} = \frac{1}{12}m_{batt}(W_{batt}^2 + H_{batt}^2) = \frac{1}{12}\times 0.013\times(0.012^2+0.008^2) \approx 2.253 \times 10^{-7}\,\text{kg}\cdot\text{m}^2$$
+$$I_{batt,yy} \approx 1.398 \times 10^{-6}\,\text{kg}\cdot\text{m}^2, \quad I_{batt,zz} \approx 1.484 \times 10^{-6}\,\text{kg}\cdot\text{m}^2$$
+</div>
+
+<h3 id="sec-geometry-3">2.3 機體總轉動慣量合成</h3>
+<div class="equation">
+$$I_{xx} = I_{motors,xx} + I_{rest,xx} + I_{batt,xx} \approx \mathbf{4.185 \times 10^{-5}\,\text{kg}\cdot\text{m}^2}$$
+$$I_{yy} \approx \mathbf{4.303 \times 10^{-5}\,\text{kg}\cdot\text{m}^2}, \quad I_{zz} \approx \mathbf{8.774 \times 10^{-5}\,\text{kg}\cdot\text{m}^2}$$
+</div>
+<table>
+<tr><th>慣量分量</th><th>數值</th><th>佔比</th><th>備註</th></tr>
+<tr><td>$I_{xx}$（Roll）</td><td>$4.185\times 10^{-5}$</td><td>100%</td><td>基準</td></tr>
+<tr><td>$I_{yy}$（Pitch）</td><td>$4.303\times 10^{-5}$</td><td>100%</td><td>比 Roll 高 2.8%</td></tr>
+<tr><td>$I_{zz}$（Yaw）</td><td>$8.774\times 10^{-5}$</td><td>100%</td><td>約為 Roll 的 2.1 倍</td></tr>
+</table>
+<div class="box success">
+<div class="box-title">關鍵結論</div>
+馬達點質量佔 Roll/Pitch 慣量約 <strong>86%</strong>，是決定姿態動態的最主要項。Yaw 軸慣量顯著較大（約 2 倍），可容許更高的速率環增益或需要更長的響應時間。
+</div>
+</div>
+
+<div class="section" id="sec-thrust">
+<h2>3. 致動器推力模型與混控器設計</h2>
+
+<h3 id="sec-thrust-1">3.1 帶死區的二次推力模型</h3>
+<p>空心杯有刷馬達的靜態推力與 PWM 指令呈二次關係：</p>
+<div class="equation">
+$$T(\text{PWM}) = \begin{cases} 0 & \text{if } \text{PWM} < \text{PWM}_0 \\ c''(\text{PWM} - \text{PWM}_0)^2 & \text{if } \text{PWM} \geq \text{PWM}_0 \end{cases}$$
+</div>
+<p>其中推力係數 $c''$ 由滿油門條件校準：</p>
+<div class="equation">
+$$c'' = \frac{T_{max,single}}{(\text{PWM}_{max} - \text{PWM}_0)^2} = \frac{0.569}{(216-20)^2} \approx \mathbf{1.481 \times 10^{-5}\,\text{N/count}^2}$$
+</div>
+
+<h3 id="sec-thrust-2">3.2 局部線性化與工作點增益 $k_T$</h3>
+<div class="equation">
+$$k_T(\text{PWM}_{op}) = \left.\frac{\partial T}{\partial \text{PWM}}\right|_{\text{PWM}_{op}} = 2c''(\text{PWM}_{op} - \text{PWM}_0)$$
+</div>
+<table>
+<tr><th>工作點</th><th>$\text{PWM}_{op}$</th><th>$k_T$（N/count）</th><th>相對增益比</th></tr>
+<tr><td>死區邊緣</td><td>20</td><td>0</td><td>0%</td></tr>
+<tr><td>低油門測試</td><td>40</td><td>$5.92\times 10^{-4}$</td><td>100%</td></tr>
+<tr><td>懸停估算</td><td>118</td><td>$2.90\times 10^{-3}$</td><td>490%</td></tr>
+<tr><td>高機動</td><td>180</td><td>$4.74\times 10^{-3}$</td><td>801%</td></tr>
+<tr><td>滿油門</td><td>216</td><td>$5.80\times 10^{-3}$</td><td>980%</td></tr>
+</table>
+<div class="box warning">
+<div class="box-title">關鍵性質</div>
+$k_T$ 正比於「離死區的距離」，不是常數。高油門時系統增益自動變大，若 PID 增益固定，閉迴路頻寬將自動擴大 5~10 倍，極易引發震盪。
+</div>
+
+<h3 id="sec-thrust-3">3.3 混控器對稱性與等效扭矩增益 $k_{eff}$</h3>
+<p>混控矩陣將控制指令映射至四顆馬達的 PWM 輸出。對於 Roll 軸：</p>
+<div class="equation">
+$$\tau_{roll} = 4lk_T u_{roll} \implies \boxed{k_{eff,roll} = 4lk_T}\,\text{[N}\cdot\text{m/count]}$$
+</div>
+<p>由 X 型對稱性，Pitch 軸推導完全相同：$k_{eff,pitch} = 4lk_T$。</p>
+
+<h3 id="sec-thrust-4">3.4 系統等效角加速度增益 $K$</h3>
+<div class="equation">
+$$\ddot{\theta}_{rad} = \frac{\tau}{I} = \frac{k_{eff}}{I} \cdot u \quad [\text{rad/s}^2/\text{count}]$$
+$$\ddot{\theta}_{deg} = \ddot{\theta}_{rad} \times \frac{180}{\pi} = K \cdot u$$
+$$\boxed{K = \frac{k_{eff}}{I} \cdot \frac{180}{\pi}}\,\left[\frac{\text{deg/s}^2}{\text{count}}\right]$$
+</div>
+
+<h4>數值計算（懸停工作點 $\text{PWM}_{op} = 118$）</h4>
+<div class="equation">
+$$k_{eff} = 4 \times 0.042426 \times 2.903\times 10^{-3} \approx 4.927\times 10^{-4}\,\text{N}\cdot\text{m}/\text{count}$$
+$$K_{roll}(118) = \frac{4.927\times 10^{-4}}{4.185\times 10^{-5}} \times 57.2958 \approx \mathbf{674.5}\,\text{(deg/s}^2)/\text{count}$$
+</div>
+
+<h3 id="sec-thrust-5">3.5 核心樞紐物理意義：$K$、$k_{eff}$、$I$ 的關係鏈</h3>
+<pre>
+PID 輸出 u [count]
+    ↓
+k_eff [N·m/count] ──► 扭矩 τ = k_eff × u [N·m]
+    ↓
+I [kg·m²] ──► 角加速度 = τ/I [rad/s²]
+    ↓ × 180/π
+K = (k_eff/I) × 180/π [(deg/s²)/count]
+</pre>
+<div class="box info">
+<div class="box-title">核心結論</div>
+$K_{p,i}$ 與 $K$ <strong>成反比</strong>（$K_{p,i} \propto 1/K$），所以 $K$ 越大，需要的 PID 增益反而越小——這是許多人直覺上會搞反的地方。
+</div>
+</div>
+
+<div class="section" id="sec-plant">
+<h2>4. 被控對象動態模型</h2>
+
+<h3 id="sec-plant-1">4.1 剛體旋轉動力學</h3>
+<div class="equation">
+$$I\ddot{\theta}(t) = \tau_{control}(t) + \tau_{aero}(t) + \tau_{dist}(t)$$
+</div>
+
+<h3 id="sec-plant-2">4.2 氣動阻尼物理機制</h3>
+<p>總氣動阻尼力矩與角速度成正比、方向相反：</p>
+<div class="equation">
+$$\tau_{aero} = -(b_{flap} + b_{drag})\dot{\theta} = -b_{aero}\dot{\theta}$$
+</div>
+<p>其中 $b_{aero}$ 的單位為 $\text{N}\cdot\text{m}\cdot\text{s}/\text{rad}$。這個力矩與 PID 控制器完全無關，即使馬達維持定速、不做任何主動修正，機身轉動時它依然存在。</p>
+
+<h3 id="sec-plant-3">4.3 連續時間狀態空間表示</h3>
+<div class="equation">
+$$I\ddot{\theta}(t) + b_{aero}\dot{\theta}(t) = k_{eff} \cdot u(t)$$
+</div>
+<p>由控制輸入 $u$ 到角度 $\theta$ 的傳遞函數（飛控常用單位 deg）：</p>
+<div class="equation">
+$$\boxed{G_p(s) = \frac{K}{s(s + b_{aero}/I)} = \frac{K}{s(s + p_{aero})}}\,\text{[deg/s}^2/\text{count]}$$
+</div>
+<p>其中 $p_{aero} = b_{aero}/I = 1/\tau_{decay}$ 為被動氣動極點。</p>
+
+<h3 id="sec-plant-4">4.4 傳遞函數 $G_{p,SI}(s)$ 的逐步導證</h3>
+<p><strong>第一步：時域動力學方程式</strong></p>
+<div class="equation">
+$$I \cdot \ddot{\theta}(t) + b_{aero}\dot{\theta}(t) = k_{eff} \cdot u(t)$$
+</div>
+<p><strong>第二步：拉普拉斯變換</strong>（零初始條件）</p>
+<div class="equation">
+$$I \cdot s^2\Theta(s) + b_{aero} \cdot s\Theta(s) = k_{eff} \cdot U(s)$$
+</div>
+<p><strong>第三步：整理成標準形式</strong></p>
+<div class="equation">
+$$\Theta(s) \cdot Is\left(s + \frac{b_{aero}}{I}\right) = k_{eff} \cdot U(s)$$
+</div>
+<p><strong>第四步：求傳遞函數</strong></p>
+<div class="equation">
+$$\boxed{G_{p,SI}(s) = \frac{\Theta(s)}{U(s)} = \frac{k_{eff}/I}{s(s + b_{aero}/I)}}$$
+</div>
+<p><strong>第五步：單位驗證</strong></p>
+<div class="equation">
+$$\frac{k_{eff}}{I} = \frac{\text{kg}\cdot\text{m}/\text{s}^2 \cdot \text{m}}{\text{kg}\cdot\text{m}^2} = \frac{1}{\text{s}^2}\,\text{(或 rad/s}^2\text{ per count)}$$
+</div>
+<div class="box info">
+<div class="box-title">物理意義</div>
+這個傳遞函數代表「一個雙積分器（角度 ← 角速度 ← 角加速度），加上一個一階氣動阻尼（讓角速度會自然衰減），由控制輸入 $u$ 透過增益 $k_{eff}/I$ 驅動。」
+</div>
+</div>
+
+<div class="section" id="sec-pid">
+<h2>5. 雙環串接 PID 控制器架構</h2>
+
+<pre>
+θ_cmd ──>[⊕]──> K_p,o ──> ω_cmd ──>[⊕]──> K_p,i ──>[Plant]──> θ
+            -↑(200Hz)                -↑(1000Hz)
+             |                        |
+             θ                        ω
+</pre>
+
+<h3>5.1 外環（Angle Loop, 200Hz）</h3>
+<ul>
+<li>受控量：姿態角 $\theta$（deg）</li>
+<li>輸出：目標角速度 $\omega_{cmd}$（deg/s）</li>
+<li>控制器：純 P 控制</li>
+<li>$\omega_{cmd}(t) = K_{p,o}(\theta_{cmd}(t) - \theta(t))$</li>
+</ul>
+
+<h3>5.2 內環（Rate Loop, 1000Hz）</h3>
+<ul>
+<li>受控量：角速度 $\omega = \dot{\theta}$（deg/s）</li>
+<li>輸出：控制量 $u$（PWM count）</li>
+<li>控制器：完整 PID</li>
+<li>$u(t) = K_{p,i}(\omega_{cmd} - \omega) + K_{i,i}\int(\omega_{cmd} - \omega)dt + K_{d,i}\frac{d}{dt}(\omega_{cmd} - \omega)$</li>
+</ul>
+
+<h3>5.3 單位與量綱分析</h3>
+<table>
+<tr><th>訊號</th><th>數學式</th><th>單位</th><th>量綱</th></tr>
+<tr><td>$\theta_{cmd} - \theta$</td><td>$\Delta\theta$</td><td>deg</td><td>$[\theta]$</td></tr>
+<tr><td>$\omega_{cmd}$</td><td>$K_{p,o} \cdot \Delta\theta$</td><td>deg/s</td><td>$[T]^{-1}$</td></tr>
+<tr><td>$\omega_{cmd} - \omega$</td><td>$\Delta\omega$</td><td>deg/s</td><td>$[T]^{-1}$</td></tr>
+<tr><td>$u$</td><td>$K_{p,i} \cdot \Delta\omega$</td><td>count</td><td>—</td></tr>
+<tr><td>$\ddot{\theta}$</td><td>$K \cdot u$</td><td>deg/s²</td><td>$[T]^{-2}$</td></tr>
+</table>
+<p>外環增益 $K_{p,o}$ 的單位為 1/s（或 Hz），本質上是一個頻率——即外環的「糾錯頻率」。</p>
+</div>
+
+<div class="section" id="sec-closed">
+<h2>6. 閉迴路傳遞函數與穩定性分析</h2>
+
+<h3 id="sec-closed-1">6.1 理想連續時間模型（無延遲）</h3>
+<p>假設致動器響應瞬間（無延遲），以下逐步推導雙環 P-P 控制系統的閉迴路傳遞函數。</p>
+
+<h4>步驟 1：外環（Angle Loop）輸出</h4>
+<p>外環為純 P 控制器，受控量為姿態角 $\theta$，輸出為目標角速度 $\omega_{cmd}$：</p>
+<div class="equation">
+$$\Omega_{cmd}(s) = K_{p,o}\big(\Theta_{cmd}(s) - \Theta(s)\big)$$
+</div>
+
+<h4>步驟 2：內環（Rate Loop）輸出</h4>
+<p>內環亦為純 P 控制器，受控量為角速度 $\omega = \dot{\theta}$（即 $s\Theta(s)$），輸出為控制量 $u$：</p>
+<div class="equation">
+$$U(s) = K_{p,i}\big(\Omega_{cmd}(s) - s\Theta(s)\big)$$
+</div>
+<p>將步驟 1 的 $\Omega_{cmd}(s)$ 代入：</p>
+<div class="equation">
+$$U(s) = K_{p,i}\Big[K_{p,o}\Theta_{cmd}(s) - K_{p,o}\Theta(s) - s\Theta(s)\Big]$$
+$$\boxed{U(s) = K_{p,i}\Big[K_{p,o}\Theta_{cmd}(s) - (K_{p,o} + s)\Theta(s)\Big]}$$
+</div>
+
+<h4>步驟 3：被控對象（Plant）動態</h4>
+<p>由 §4.3，被控對象從控制輸入 $U(s)$ 到角度 $\Theta(s)$ 的傳遞函數為：</p>
+<div class="equation">
+$$G_p(s) = \frac{\Theta(s)}{U(s)} = \frac{K}{s(s + p_{aero})}$$
+</div>
+<p>整理為時域代數形式：</p>
+<div class="equation">
+$$s(s + p_{aero})\Theta(s) = K \cdot U(s)$$
+</div>
+
+<h4>步驟 4：代入消去 $U(s)$</h4>
+<p>將步驟 2 的 $U(s)$ 代入步驟 3：</p>
+<div class="equation">
+$$s(s + p_{aero})\Theta(s) = K \cdot K_{p,i}\Big[K_{p,o}\Theta_{cmd}(s) - (K_{p,o} + s)\Theta(s)\Big]$$
+</div>
+
+<h4>步驟 5：整理成標準閉迴路形式</h4>
+<p>將所有含 $\Theta(s)$ 的項移至等式左側：</p>
+<div class="equation">
+$$s(s + p_{aero})\Theta(s) + KK_{p,i}(K_{p,o} + s)\Theta(s) = KK_{p,i}K_{p,o}\Theta_{cmd}(s)$$
+</div>
+<p>展開並合併同類項：</p>
+<div class="equation">
+$$\big[s^2 + p_{aero}s + KK_{p,i}s + KK_{p,i}K_{p,o}\big]\Theta(s) = KK_{p,i}K_{p,o}\Theta_{cmd}(s)$$
+</div>
+<div class="equation">
+$$\big[s^2 + (p_{aero} + KK_{p,i})s + KK_{p,i}K_{p,o}\big]\Theta(s) = KK_{p,i}K_{p,o}\Theta_{cmd}(s)$$
+</div>
+
+<h4>步驟 6：求得閉迴路傳遞函數 $T(s)$</h4>
+<div class="equation">
+$$\boxed{T(s) = \frac{\Theta(s)}{\Theta_{cmd}(s)} = \frac{KK_{p,i}K_{p,o}}{s^2 + (p_{aero} + KK_{p,i})s + KK_{p,i}K_{p,o}}}$$
+</div>
+<div class="box info">
+<div class="box-title">推導要點</div>
+<ul>
+<li>外環僅用 P 控制，將角度誤差轉換為角速度指令。</li>
+<li>內環亦僅用 P 控制，將角速度誤差轉換為 PWM 控制量 $u$。</li>
+<li>被控對象為雙積分器加一階氣動阻尼，由 $u$ 驅動產生角度 $\theta$。</li>
+<li>三式聯立消去中間變數 $\Omega_{cmd}(s)$ 與 $U(s)$，即得從 $\Theta_{cmd}$ 到 $\Theta$ 的閉迴路傳遞函數。</li>
+</ul>
+</div>
+
+<h3 id="sec-closed-2">6.2 二階標準式對比與阻尼分解</h3>
+<p>對照標準二階系統 $s^2 + 2\zeta\omega_n s + \omega_n^2 = 0$：</p>
+<div class="equation">
+$$\boxed{\omega_n^2 = KK_{p,i}K_{p,o}} \quad \text{（自然頻率）}$$
+$$\boxed{2\zeta\omega_n = p_{aero} + KK_{p,i}} \quad \text{（阻尼比）}$$
+</div>
+<p>阻尼比 $\zeta$ 是兩個獨立物理來源的和：</p>
+<div class="equation">
+$$\zeta = \underbrace{\frac{b_{aero}}{2I\omega_n}}_{\zeta_p} + \underbrace{\frac{KK_{p,i}}{2\omega_n}}_{\zeta_a}$$
+</div>
+<ul>
+<li>$\zeta_p$：被動氣動阻尼項（機體「天生」帶有的阻尼）</li>
+<li>$\zeta_a$：主動回授阻尼項（由內環比例控制提供）</li>
+</ul>
+
+<h3 id="sec-closed-3">6.3 純 P-P 模型的絕對穩定性定理</h3>
+<div class="box success">
+<div class="box-title">定理 6.1（純 P-P 模型絕對穩定性）</div>
+在不考慮致動器延遲的連續時間 P-P 雙環系統中，對於任意正增益 $K_{p,o} > 0$ 與 $K_{p,i} > 0$，系統特徵根恆位於左半複數平面（LHP），即系統<strong>絕對穩定</strong>。
+</div>
+
+<h4>6.3.1 定理證明：二階系統的 Routh–Hurwitz 判據</h4>
+<p>由 §6.1 步驟 6，閉迴路特徵多項式為：</p>
+<div class="equation">
+$$\Delta(s) = s^2 + \underbrace{(p_{aero} + KK_{p,i})}_{a_1}s + \underbrace{KK_{p,i}K_{p,o}}_{a_0}$$
+</div>
+<p>對於二階多項式 $a_2 s^2 + a_1 s + a_0$（$a_2=1$），Routh 表為：</p>
+<div class="equation">
+$$\begin{array}{c|cc} s^2 & a_2 & a_0 \\ s^1 & a_1 & 0 \\ s^0 & a_0 & \end{array}$$
+</div>
+<p>第一行主元素為 $a_2,\,a_1,\,a_0$，因此 Routh–Hurwitz 穩定的充要條件簡化為<strong>三係數同號</strong>（此為二階系統的特例；三階以上才需要額外的行列式條件，見 §7.2）。逐項檢驗其符號：</p>
+<div class="equation">
+$$a_2 = 1 > 0 \quad\text{（恆成立）}$$
+</div>
+<div class="equation">
+$$a_1 = p_{aero} + KK_{p,i}$$
+</div>
+<p>其中 $p_{aero} = b_{aero}/I$，而 $b_{aero} > 0$（真實物理阻尼，§4.2）、$I > 0$（轉動慣量恆正），故 $p_{aero} > 0$。又 $K > 0$（§3.4 定義為 $k_{eff}/I \times 180/\pi$，各因子皆正）、$K_{p,i} > 0$（設計假設）。三項皆正，故：</p>
+<div class="equation">
+$$\boxed{a_1 = p_{aero} + KK_{p,i} > 0 \quad \text{對任意 } K_{p,i} > 0 \text{ 恆成立}}$$
+</div>
+<div class="equation">
+$$a_0 = KK_{p,i}K_{p,o} > 0 \quad \text{（三個正數之積，對任意 } K_{p,o}, K_{p,i} > 0 \text{ 恆成立）}$$
+</div>
+<p>$a_0, a_1, a_2$ 三係數同號（皆正），Routh–Hurwitz 判據滿足，故特徵根恆位於 LHP，定理得證。$\blacksquare$</p>
+<div class="box info">
+<div class="box-title">與典型「臨界增益 $K_u$」系統的本質差異</div>
+一般會出現不穩定的系統，其 $a_1$ 項通常含有「$-K_{p,i}$」這類<strong>負號項</strong>（例如相位滯後導致的負阻尼），使得增益調高到某臨界值後 $a_1$ 變號、系統失穩。但本模型中 $a_1 = p_{aero} + KK_{p,i}$ 是<strong>兩個正項相加</strong>，$K_{p,i}$ 越大只會讓 $a_1$ 越大（阻尼越強），永遠不會使 $a_1$ 變號。這正是「無延遲」假設的代數體現——沒有任何機制能讓阻尼項變負。
+</div>
+
+<h4>6.3.2 阻尼比下限 $\zeta_{min}$ 的推導</h4>
+<p>由 §6.2，對固定外環增益 $K_{p,o}$，將 $x \equiv KK_{p,i} > 0$ 視為自由變數，阻尼比可寫成 $x$ 的函數：</p>
+<div class="equation">
+$$\zeta(x) = \frac{2\zeta\omega_n}{2\omega_n} = \frac{p_{aero}+x}{2\sqrt{KK_{p,i}K_{p,o}}} = \frac{p_{aero}+x}{2\sqrt{xK_{p,o}}} = \frac{1}{2\sqrt{K_{p,o}}}\Big(p_{aero}\,x^{-1/2} + x^{1/2}\Big)$$
+</div>
+<p>對 $x$ 求一階導數並令其為零，尋找極值點：</p>
+<div class="equation">
+$$\frac{d\zeta}{dx} = \frac{1}{2\sqrt{K_{p,o}}}\left(-\frac{1}{2}p_{aero}\,x^{-3/2} + \frac{1}{2}x^{-1/2}\right) = 0$$
+</div>
+<div class="equation">
+$$\Rightarrow x^{-1/2} = p_{aero}\,x^{-3/2} \;\Rightarrow\; x^{-1/2}\cdot x^{3/2} = p_{aero} \;\Rightarrow\; \boxed{x^\ast = p_{aero}}$$
+</div>
+<p>由邊界行為 $\zeta(x)\to\infty$（當 $x\to 0^+$ 或 $x\to\infty$）可知 $x^\ast=p_{aero}$ 為<strong>唯一極小值點</strong>。代回 $x^\ast = KK_{p,i}^\ast = p_{aero}$：</p>
+<div class="equation">
+$$\zeta_{min} = \frac{p_{aero}+p_{aero}}{2\sqrt{p_{aero}K_{p,o}}} = \frac{2p_{aero}}{2\sqrt{p_{aero}}\sqrt{K_{p,o}}} = \sqrt{\frac{p_{aero}}{K_{p,o}}}$$
+</div>
+<p>將 $p_{aero}=b_{aero}/I$ 代回，得閉形式：</p>
+<div class="equation">
+$$\boxed{\zeta_{min} = \sqrt{\frac{b_{aero}}{IK_{p,o}}} > 0}$$
+</div>
+<div class="box danger">
+<div class="box-title">勘誤說明</div>
+本節先前版本將此式誤植為其倒數形式 $\sqrt{IK_{p,o}/b_{aero}}$。可用設計實例快速驗證何者正確：取 §9 的設計值 $K_{p,o}=10.59$、$p_{aero}=2.867$，正確式給出 $\zeta_{min}=\sqrt{2.867/10.59}\approx 0.52$，小於設計目標 $\zeta=0.707$，合乎邏輯（下限必須低於實際操作點）；而倒數式會給出 $\zeta_{min}\approx 1.92 > 0.707$，意即「理論下限高於實際設計值」，自相矛盾。故以 $\zeta_{min}=\sqrt{b_{aero}/(IK_{p,o})}$ 為準，本文檔後續（含 §13.1 速查表）應以此為準。
+</div>
+<p><strong>物理意義</strong>：極值點 $x^\ast = KK_{p,i}^\ast = p_{aero}$ 意味著 $\zeta_a = \zeta_p$，亦即<strong>主動回授阻尼恰等於被動氣動阻尼</strong>時，總阻尼比達到全域最小值 $\zeta_{min}$。無論 $K_{p,i}$ 調得多大或多小，阻尼比都不可能低於此值——這正是「絕對穩定但阻尼可能過低」的量化描述：定理 6.1 保證極點恆在 LHP，但 $\zeta_{min}$ 說明此保證只確保「不發散」，不保證「響應不震盪」。</p>
+
+<h3 id="sec-closed-4">6.4 定理的物理意義與實務矛盾</h3>
+<table>
+<tr><th></th><th>理想 P-P 模型預測</th><th>實測經驗</th></tr>
+<tr><td>穩定性</td><td>再高的增益也不會震盪</td><td>內環 $K_{p,i}$ 調高到某個值後，系統必然出現高頻發散震盪</td></tr>
+<tr><td>動態</td><td>系統永遠穩定</td><td>實際會出現自激發散</td></tr>
+</table>
+<div class="box danger">
+<div class="box-title">矛盾根源</div>
+純二階 P-P 模型假設致動器響應瞬間、無延遲。真實的空心杯馬達存在電氣與機械響應延遲，這個被遺漏的動態是導致高頻不穩定的<strong>決定性因素</strong>。
+</div>
+</div>
+
+<div class="section" id="sec-delay">
+<h2>7. 致動器延遲與高階動態效應</h2>
+
+<h3 id="sec-delay-1">7.1 一階馬達遲滯模型</h3>
+<div class="equation">
+$$G_m(s) = \frac{1}{\tau_m s + 1}, \quad \tau_m \approx 10\,\text{ms}$$
+</div>
+<p>$\tau_m$ 的物理組成：</p>
+<ul>
+<li>電氣時間常數：$\tau_{elec} = L/R \approx 1\sim 5$ ms</li>
+<li>機械時間常數：$\tau_{mech} = \frac{J_{rotor}R}{k_t^2} \approx 5\sim 15$ ms</li>
+<li>驅動器延遲：MOSFET 開關與 PWM 更新延遲 $\approx 0.1\sim 1$ ms</li>
+</ul>
+
+<h4>7.1.1 從電機-機械耦合方程導出真實模型</h4>
+<p>有刷空心杯馬達的動態由電氣迴路（電壓方程）與機械轉子（扭矩方程）兩組微分方程耦合而成。電壓方程（含反電動勢 $k_e\omega$）：</p>
+<div class="equation">
+$$L\frac{di}{dt} + Ri = V(t) - k_e\,\omega(t)$$
+</div>
+<p>機械方程（忽略負載阻尼、僅保留轉子慣量 $J$）：</p>
+<div class="equation">
+$$J\frac{d\omega}{dt} = k_t\,i(t)$$
+</div>
+<p>零初始條件下取 Laplace 轉換：</p>
+<div class="equation">
+$$(Ls+R)I(s) = V(s) - k_e\Omega(s), \qquad Js\,\Omega(s) = k_t I(s)$$
+</div>
+<p>由第二式解出 $I(s) = \dfrac{Js}{k_t}\Omega(s)$，代入第一式消去 $I(s)$：</p>
+<div class="equation">
+$$(Ls+R)\cdot\frac{Js}{k_t}\Omega(s) = V(s) - k_e\Omega(s)$$
+</div>
+<div class="equation">
+$$\big[(Ls+R)Js + k_tk_e\big]\Omega(s) = k_tV(s)$$
+</div>
+<p>整理得<strong>真實的二階</strong>電機-機械傳遞函數：</p>
+<div class="equation">
+$$\boxed{G(s) = \frac{\Omega(s)}{V(s)} = \frac{k_t}{LJs^2 + RJs + k_tk_e} = \frac{1/k_e}{\tau_{elec}\tau_{mech}\,s^2 + \tau_{mech}\,s + 1}}$$
+</div>
+<p>其中 $\tau_{elec} = L/R$ 為電氣時間常數，$\tau_{mech} = \dfrac{RJ}{k_tk_e}$ 為機械時間常數（取 $k_t=k_e$，此即 §7.1 清單中所列 $\tau_{mech}=J_{rotor}R/k_t^2$ 的來源）。</p>
+
+<h4>7.1.2 二階模型降階為一階：時間尺度分離</h4>
+<p>當電氣動態遠快於機械動態（$\tau_{elec}\ll\tau_{mech}$，空心杯電感極小時成立），分母可作因式分解近似：</p>
+<div class="equation">
+$$\tau_{elec}\tau_{mech}s^2 + \tau_{mech}s + 1 \;\approx\; (\tau_{elec}s+1)(\tau_{mech}s+1)$$
+</div>
+<p>展開右式驗證：$(\tau_{elec}s+1)(\tau_{mech}s+1) = \tau_{elec}\tau_{mech}s^2 + (\tau_{elec}+\tau_{mech})s + 1$，與左式相比僅一次項差 $(\tau_{elec}+\tau_{mech})s$ 對 $\tau_{mech}s$，因 $\tau_{elec}\ll\tau_{mech}$ 此差異可忽略。於是：</p>
+<div class="equation">
+$$G(s) \approx \frac{1/k_e}{(\tau_{elec}s+1)(\tau_{mech}s+1)}$$
+</div>
+<p>此為<strong>兩個串接一階遲滯</strong>的精確物理圖像；再串上驅動器延遲 $\tau_{drv}$（PWM 更新與 MOSFET 開關），完整鏈路為三個一階環節的乘積：</p>
+<div class="equation">
+$$G_{full}(s) \propto \frac{1}{(\tau_{elec}s+1)(\tau_{mech}s+1)(\tau_{drv}s+1)}$$
+</div>
+
+<h4>7.1.3 為何可等效為單一一階模型：低頻矩匹配</h4>
+<p>將多個一階環節的乘積在 $s\to 0$ 附近做 Maclaurin 展開：</p>
+<div class="equation">
+$$\prod_{i}\frac{1}{\tau_i s+1} = \prod_i\big(1-\tau_i s+O(s^2)\big) = 1 - \Big(\sum_i\tau_i\Big)s + O(s^2)$$
+</div>
+<p>另一方面，單一等效一階模型的展開為：</p>
+<div class="equation">
+$$\frac{1}{\tau_m s+1} = 1 - \tau_m s + O(s^2)$$
+</div>
+<p>比較一次項係數，兩者在低頻（$s\to 0$）下若要一致，須滿足：</p>
+<div class="equation">
+$$\boxed{\tau_m = \sum_i \tau_i = \tau_{elec} + \tau_{mech} + \tau_{drv}}$$
+</div>
+<div class="box info">
+<div class="box-title">推導要點與適用範圍</div>
+<ul>
+<li>此為<strong>低頻等效</strong>（一階矩匹配）近似：單一等效極點與真實三極點系統在 DC 增益與低頻相位斜率（一次項）上完全一致，但高頻相位/增益滾降速率不同（真實系統為 -180°/decade 三階滾降，等效模型僅 -90°/decade 一階滾降）。</li>
+<li>此近似在頻寬設計中是<strong>保守且適用</strong>的，因為 §7.5 的相位裕度準則本質上也只用到低頻的線性相位滯後項 $-\omega\tau_i$ 疊加，與此處的一次項匹配原則完全一致——這正是 §7.4／§7.5 能將 $\tau_{ZOH}, \tau_{filter}, \tau_{calc}$ 等多來源延遲直接線性相加為 $\tau_{total}$ 的數學根據。</li>
+<li>驗證：$\tau_{elec}(1\sim5\text{ms}) + \tau_{mech}(5\sim15\text{ms}) + \tau_{drv}(0.1\sim1\text{ms}) \approx 6.1\sim21\,\text{ms}$，中位數落在文檔採用值 $\tau_m\approx10$ ms 附近，數量級吻合。</li>
+</ul>
+</div>
+
+<h3 id="sec-delay-2">7.2 三階系統與勞斯-霍維茨判準</h3>
+
+<h4>7.2.1 特徵多項式推導：將馬達極點併入 §6.1 迴路</h4>
+<p>沿用 §6.1 的雙環代數，但將原本「致動器瞬時響應」的假設，替換為 §7.1 導出的一階馬達遲滯 $G_m(s)=\dfrac{1}{\tau_m s+1}$。此時控制輸出 $U(s)$ 不再直接驅動剛體動力學，而是先經過馬達動態，兩者串接後才作用於雙積分被控對象：</p>
+<div class="equation">
+$$\Theta(s) = G_m(s)\,G_p(s)\,U(s) = \frac{1}{\tau_m s+1}\cdot\frac{K}{s(s+p_{aero})}\cdot U(s)$$
+</div>
+<p>外環與內環的代數關係與 §6.1 步驟 1–2 完全相同（控制器本身未變）：</p>
+<div class="equation">
+$$U(s) = K_{p,i}\Big[K_{p,o}\Theta_{cmd}(s) - (K_{p,o}+s)\Theta(s)\Big]$$
+</div>
+<p>將被控對象方程式兩側同乘 $(\tau_m s+1)s(s+p_{aero})$，消去分母：</p>
+<div class="equation">
+$$(\tau_m s+1)\,s\,(s+p_{aero})\,\Theta(s) = K\,U(s)$$
+</div>
+<p>代入 $U(s)$，並將所有含 $\Theta(s)$ 的項移至左側：</p>
+<div class="equation">
+$$(\tau_m s+1)\,s\,(s+p_{aero})\,\Theta(s) + KK_{p,i}(s+K_{p,o})\Theta(s) = KK_{p,i}K_{p,o}\Theta_{cmd}(s)$$
+</div>
+<p>先展開 $(\tau_m s+1)\,s\,(s+p_{aero})$：</p>
+<div class="equation">
+$$s(s+p_{aero}) = s^2+p_{aero}s$$
+$$(\tau_m s+1)(s^2+p_{aero}s) = \tau_m s^3 + \tau_m p_{aero}s^2 + s^2 + p_{aero}s = \tau_m s^3 + (1+\tau_m p_{aero})s^2 + p_{aero}s$$
+</div>
+<p>再加上 $KK_{p,i}(s+K_{p,o}) = KK_{p,i}s + KK_{p,i}K_{p,o}$，合併同類項得特徵多項式：</p>
+<div class="equation">
+$$\boxed{\Delta(s) = \tau_m s^3 + (1 + \tau_m p_{aero})s^2 + (p_{aero} + KK_{p,i})s + KK_{p,i}K_{p,o} = 0}$$
+</div>
+<p>此式與原稿一致，且可觀察到：令 $\tau_m\to 0$（致動器瞬時響應），此三階式退化為 §6.3 的二階式 $s^2+(p_{aero}+KK_{p,i})s+KK_{p,i}K_{p,o}$，與定理 6.1 的極限情形吻合，交叉驗證了推導的正確性。</p>
+
+<h4>7.2.2 Routh–Hurwitz 表的構建</h4>
+<p>對三階多項式 $a_3s^3+a_2s^2+a_1s+a_0$，令：</p>
+<div class="equation">
+$$a_3=\tau_m,\quad a_2=1+\tau_m p_{aero},\quad a_1=p_{aero}+KK_{p,i},\quad a_0=KK_{p,i}K_{p,o}$$
+</div>
+<p>Routh 表構建規則（每行由上兩行交叉相乘、除以前一行首元素）：</p>
+<div class="equation">
+$$\begin{array}{c|cc}
+s^3 & a_3 & a_1 \\
+s^2 & a_2 & a_0 \\
+s^1 & b_1 & 0 \\
+s^0 & a_0 &
+\end{array}
+\qquad b_1 = \frac{a_2 a_1 - a_3 a_0}{a_2}$$
+</div>
+<p>穩定的充要條件為第一欄 $\{a_3, a_2, b_1, a_0\}$ 皆同號（正）：</p>
+<ul>
+<li>$a_3=\tau_m>0$：馬達時間常數恆正，自動滿足。</li>
+<li>$a_2=1+\tau_m p_{aero}>0$：$\tau_m>0$、$p_{aero}>0$（§6.3.1 已證），故恆正，自動滿足。</li>
+<li>$a_0=KK_{p,i}K_{p,o}>0$：三正數之積，只要增益為正即自動滿足。</li>
+<li>$b_1>0$：<strong>唯一非自動滿足的條件</strong>，需展開判斷。</li>
+</ul>
+<p>將 $b_1$ 展開，因分母 $a_2>0$，故 $b_1>0 \iff a_2a_1-a_3a_0>0$，代入得判據：</p>
+<div class="equation">
+$$\boxed{(1 + \tau_m p_{aero})(p_{aero} + KK_{p,i}) - \tau_m KK_{p,i}K_{p,o} > 0}$$
+</div>
+<div class="box info">
+<div class="box-title">與 §6.3 定理 6.1 的對比：不穩定機制的代數起源</div>
+無延遲模型（§6.3）中，穩定條件只涉及 $a_1,a_0$ 兩個「恆正」的量，因此永遠穩定。加入馬達延遲後，穩定條件多了 $b_1>0$ 這一項，而 $b_1$ 的展開式中出現 $-\tau_m KK_{p,i}K_{p,o}$ 這個<strong>唯一的負號項</strong>——它正比於 $K_{p,i}$，且隨 $K_{p,i}$ 增大而線性變負、變大。這就是為什麼實務上調高內環增益到某個臨界值後系統必然發散（§6.4 的「矛盾根源」）：延遲項 $\tau_m$ 把原本不存在的負反饋項引入了穩定判據，此負項正是 §7.3 臨界增益 $K_{u,i}$ 存在的代數根源。
+</div>
+
+<h3 id="sec-delay-3">7.3 臨界內環增益閉形式解</h3>
+
+<h4>7.3.1 由穩定邊界解出 $K_{p,i}$ 上限</h4>
+<p>臨界（邊際穩定）發生於 $b_1=0$，即 §7.2.2 判據式取等號。令 $X \equiv KK_{p,i}$，展開等式：</p>
+<div class="equation">
+$$(1+\tau_m p_{aero})(p_{aero}+X) - \tau_m K_{p,o}X = 0$$
+</div>
+<div class="equation">
+$$(1+\tau_m p_{aero})p_{aero} + X\big[(1+\tau_m p_{aero}) - \tau_m K_{p,o}\big] = 0$$
+</div>
+<p>解出 $X$：</p>
+<div class="equation">
+$$X_u = \frac{(1+\tau_m p_{aero})p_{aero}}{\tau_m K_{p,o} - (1+\tau_m p_{aero})}$$
+</div>
+<p>由於等式左側第一項 $(1+\tau_m p_{aero})p_{aero}>0$ 恆正，欲使 $X_u>0$（臨界點存在於物理可行的正增益範圍），分母必須同為正，此即：</p>
+<div class="equation">
+$$\boxed{\tau_m K_{p,o} > 1+\tau_m p_{aero}} \quad \text{（臨界增益存在的前提條件）}$$
+</div>
+<p>將 $X_u=KK_{p,i,u}$ 除以 $K$，得臨界內環增益閉形式解：</p>
+<div class="equation">
+$$\boxed{K_{p,i} < K_{u,i} = \frac{(1 + \tau_m p_{aero})p_{aero}}{K[\tau_m K_{p,o} - (1 + \tau_m p_{aero})]}}$$
+</div>
+
+<h4>7.3.2 前提條件不成立時的情形</h4>
+<p>若 $\tau_m K_{p,o} \le 1+\tau_m p_{aero}$，則 $b_1$ 的展開式 $a_2a_1-a_3a_0 = (1+\tau_m p_{aero})p_{aero} + X\big[(1+\tau_m p_{aero})-\tau_m K_{p,o}\big]$ 中，$X$ 的係數不為負，此式對所有 $X>0$ 皆為「正項 + 非負項」而恆正，代表<strong>不存在有限的 $K_{p,i}$ 上限</strong>——此即 §9.3 驗證中「不觸發臨界限制」的數學原因（該例中 $\tau_mK_{p,o}=0.106 < 1.029 = 1+\tau_m p_{aero}$）。</p>
+<div class="box success">
+<div class="box-title">數值交叉驗證（以 §9 設計值為例）</div>
+取 $\tau_m=0.01$、$p_{aero}=2.867$、$K=674.5$、$K_{p,o}=10.59$：<br>
+$\tau_m K_{p,o}=0.106$，$1+\tau_m p_{aero}=1.029$，因 $0.106<1.029$，故此設計點<strong>不受高頻震盪臨界限制</strong>，$K_{p,i}$ 理論上可以更大而不會因此三階模型而失穩（但仍受更高階動態如 §7.4 數位延遲、感測器雜訊等實務因素限制）。此結論與 §9.3 的直接數值代入結果完全一致，交叉驗證了 §7.2–7.3 推導的正確性。
+</div>
+
+<h3 id="sec-delay-4">7.4 數位控制系統延遲</h3>
+<p>若 $\tau_m K_{p,o} > 1 + \tau_m p_{aero}$，則 $K_{p,i}$ 存在上限：</p>
+<div class="equation">
+$$\boxed{K_{p,i} < K_{u,i} = \frac{(1 + \tau_m p_{aero})p_{aero}}{K[\tau_m K_{p,o} - (1 + \tau_m p_{aero})]}}$$
+</div>
+
+<h3 id="sec-delay-4">7.4 數位控制系統延遲</h3>
+<table>
+<tr><th>延遲來源</th><th>公式</th><th>CURIO 典型值</th></tr>
+<tr><td>Zero-Order Hold (ZOH)</td><td>$\tau_{ZOH} = T_s/2$</td><td>0.5 ms</td></tr>
+<tr><td>IMU 採樣與濾波延遲</td><td>$\tau_{filter} \approx \frac{1}{2\pi f_c}$</td><td>~1.6 ms（$f_c = 100$Hz）</td></tr>
+<tr><td>計算與傳輸延遲</td><td>$\tau_{calc}$</td><td>~0.3 ms</td></tr>
+</table>
+<div class="equation">
+$$\tau_{total} = \tau_m + \tau_{ZOH} + \tau_{filter} + \tau_{calc} \approx \mathbf{12.4\,\text{ms}}$$
+</div>
+
+<h3 id="sec-delay-5">7.5 頻寬設計準則：相位邊界限制</h3>
+<p>總相位滯後（逐項導證）：</p>
+<div class="equation">
+$$\Phi_{lag}(\omega) = -\arctan(\omega\tau_m) - \omega\tau_{ZOH} - \arctan(\omega\tau_{filter}) - \omega\tau_{calc}$$
+</div>
+<p>為確保至少 $45^\circ$ 相位裕度：</p>
+<div class="equation">
+$$\boxed{\omega_n \cdot \tau_{total} < 0.3 \sim 0.5}$$
+</div>
+<p>代入 $\tau_{total} \approx 12.4$ ms：</p>
+<div class="equation">
+$$\omega_n < \frac{0.3}{0.0124} \approx 24.2\,\text{rad/s} \quad (\approx 3.85\,\text{Hz})$$
+</div>
+
+<h3 id="sec-delay-6">7.6 頻寬與正弦波頻率</h3>
+<p>核心關係：奈奎斯特（Nyquist）定理</p>
+<div class="equation">
+$$f_{Nyquist} = \frac{f_s}{2}$$
+</div>
+<p>頻寬設計的黃金比例：</p>
+<div class="equation">
+$$\frac{f_{sample}}{f_{bandwidth}} \gtrsim 10 \sim 20$$
+</div>
+<p>內外環頻率為什麼要差距 5 倍？串接環路的頻寬分離原則：</p>
+<div class="equation">
+$$\omega_{n,inner} \approx (3 \sim 5) \times \omega_{n,outer}$$
+</div>
+
+<h3 id="sec-delay-7">7.7 空心杯馬達瓶頸</h3>
+<div class="box danger">
+<div class="box-title">一句話總結</div>
+空心杯的瓶頸不是「跑不夠快」（KV/電壓），而是「反應慢半拍」（電感 $L$、電阻 $R$、轉子慣量 $J$、有刷換向結構）。這些參數決定了馬達的「時間常數」$\tau_m \approx 10$ms，而這 10ms 佔了 CURIO 整個控制迴路延遲的 <strong>81%</strong>。想讓 CURIO 變敏捷？換馬達比調參數更有效。
+</div>
+</div>
+
+<div class="section" id="sec-bandwidth">
+<h2>8. 頻寬與自然頻率的數學關聯</h2>
+
+<h3>8.1 -3 dB 頻寬的嚴格定義</h3>
+<p>控制系統的 <strong>-3 dB 頻寬</strong> $\omega_{BW}$ 定義為閉迴路幅頻響應下降至直流增益的 $1/\sqrt{2}$ 時的角頻率：</p>
+<div class="equation">
+$$|T(j\omega_{BW})| = \frac{1}{\sqrt{2}}|T(0)|$$
+</div>
+
+<h3>8.2 頻寬與自然頻率的閉形式關係</h3>
+<p>對於標準二階系統，令 $x = (\omega_{BW}/\omega_n)^2$，解得：</p>
+<div class="equation">
+$$\boxed{\frac{\omega_{BW}}{\omega_n} = \sqrt{1 - 2\zeta^2 + \sqrt{4\zeta^4 - 4\zeta^2 + 2}}}$$
+</div>
+
+<h3>8.3 不同阻尼比下的數值對照</h3>
+<table>
+<tr><th>阻尼比 $\zeta$</th><th>$\omega_{BW}/\omega_n$</th><th>說明</th></tr>
+<tr><td>0.3</td><td>$\approx 1.42$</td><td>輕阻尼，頻寬顯著高於 $\omega_n$</td></tr>
+<tr><td>0.5</td><td>$\approx 1.27$</td><td>常見競速機下限</td></tr>
+<tr><td><strong>0.707</strong></td><td><strong>$= 1.00$</strong></td><td><strong>最佳阻尼點，頻寬恰等於自然頻率</strong></td></tr>
+<tr><td>0.8</td><td>$\approx 0.87$</td><td>本文檔推薦的保守設計</td></tr>
+<tr><td>1.0</td><td>$\approx 0.64$</td><td>臨界阻尼，頻寬明顯低於 $\omega_n$</td></tr>
+</table>
+<div class="box success">
+<div class="box-title">關鍵結論</div>
+當 $\zeta = 1/\sqrt{2} \approx 0.707$ 時，$\omega_{BW} = \omega_n$，這是「頻寬」與「自然頻率」數值重合的<strong>唯一點</strong>。
+</div>
+
+<h3>8.4 與設計目標的對應</h3>
+<p>選定設計目標 $\omega_n = 2\pi \times 2.0 = 12.57$ rad/s、$\zeta = 0.707$。此時：</p>
+<div class="equation">
+$$\omega_{BW} = \omega_n = 12.57\,\text{rad/s} \iff f_{BW} = \frac{\omega_{BW}}{2\pi} = \mathbf{2.0\,\text{Hz}}$$
+</div>
+<p>若改選 $\zeta = 0.8$（保守餘裕）：</p>
+<div class="equation">
+$$f_{BW} \approx 0.87 \times 2.0 = \mathbf{1.74\,\text{Hz}}$$
+</div>
+</div>
+
+<div class="section" id="sec-design">
+<h2>9. 增益合成方法論與完整設計</h2>
+
+<h3 id="sec-design-1">9.1 設計目標選擇</h3>
+<p>選擇<strong>中間偏保守</strong>的響應速度，同時保留足夠裕度：</p>
+<div class="equation">
+$$\boxed{\omega_n = 2\pi \times 2.0 = 12.566\,\text{rad/s}, \quad \zeta = 0.707}$$
+</div>
+<p>驗證延遲約束：</p>
+<div class="equation">
+$$\omega_n \tau_{total} = 12.566 \times 0.0124 \approx 0.156 \ll 0.3 \quad \checkmark$$
+</div>
+
+<h3 id="sec-design-2">9.2 精確閉形式合成（含氣動阻尼）</h3>
+<p>聯立方程：</p>
+<div class="equation">
+$$\begin{cases} \omega_n^2 = K K_{p,i} K_{p,o} & \text{（自然頻率）} \\ 2\zeta\omega_n = p_{aero} + K K_{p,i} & \text{（阻尼比）} \end{cases}$$
+</div>
+
+<h4>步驟 1：求解內環 $K_{p,i}$</h4>
+<div class="equation">
+$$K K_{p,i} = 2\zeta\omega_n - p_{aero} = 2 \times 0.707 \times 12.566 - 2.867 = 14.904$$
+$$\boxed{K_{p,i} = \frac{14.904}{674.5} \approx \mathbf{0.0221}\,\text{count/(deg/s)}}$$
+</div>
+
+<h4>步驟 2：求解外環 $K_{p,o}$</h4>
+<div class="equation">
+$$K_{p,o} = \frac{\omega_n^2}{K K_{p,i}} = \frac{(12.566)^2}{14.904} = \frac{157.914}{14.904}$$
+$$\boxed{K_{p,o} \approx \mathbf{10.59}\,\text{1/s}\,\text{(}\approx 10.6\,\text{Hz)}}$$
+</div>
+
+<h4>簡化公式對照（忽略 $p_{aero}$）</h4>
+<div class="equation">
+$$K_{p,o} \approx \frac{\omega_n}{2\zeta} = \frac{12.566}{1.414} \approx 8.89, \quad K_{p,i} \approx \frac{2\zeta\omega_n}{K} \approx 0.0263$$
+</div>
+<div class="box warning">
+<div class="box-title">注意</div>
+忽略氣動阻尼會導致 $K_{p,o}$ 低估約 16%、$K_{p,i}$ 高估約 19%。
+</div>
+
+<h3 id="sec-design-3">9.3 含延遲穩定性驗證（三階勞斯判據）</h3>
+<p>加入馬達延遲後的特徵多項式係數：</p>
+<ul>
+<li>$a_3 = \tau_m = 0.01$</li>
+<li>$a_2 = 1 + \tau_m p_{aero} = 1.0287$</li>
+<li>$a_1 = p_{aero} + K K_{p,i} = 17.771$</li>
+<li>$a_0 = K K_{p,i}K_{p,o} = \omega_n^2 = 157.914$</li>
+</ul>
+<p>勞斯表 $s^1$ 行：</p>
+<div class="equation">
+$$b_1 = \frac{a_2 a_1 - a_3 a_0}{a_2} = \frac{1.0287 \times 17.771 - 0.01 \times 157.914}{1.0287} = \frac{16.703}{1.0287} \approx \mathbf{16.24} > 0 \quad \checkmark$$
+</div>
+<p><strong>第一欄所有係數為正，系統穩定。</strong></p>
+<p>臨界增益上限檢查：</p>
+<div class="equation">
+$$\tau_m K_{p,o} = 0.01 \times 10.59 = 0.106 < 1.029 = 1 + \tau_m p_{aero} \quad \Rightarrow \quad \text{不觸發臨界限制}$$
+</div>
+
+<h3 id="sec-design-4">9.4 PID 擴充項設計</h3>
+
+<h4>積分項 $K_{i,i}$</h4>
+<p>積分拐角頻率取自然頻率的 $1/5 \sim 1/10$：</p>
+<div class="equation">
+$$\omega_i = 0.15\,\omega_n = 0.15 \times 12.566 = 1.885\,\text{rad/s}$$
+$$\boxed{K_{i,i} = K_{p,i} \cdot \omega_i = 0.0221 \times 1.885 \approx \mathbf{0.0416}\,\text{count/(deg}\cdot\text{s)}}$$
+</div>
+
+<h4>微分項 $K_{d,i}$（可選）</h4>
+<p>若欲進一步提升阻尼至 $\zeta' = 0.8$：</p>
+<div class="equation">
+$$\Delta\zeta_d = 0.8 - 0.707 = 0.093$$
+$$\boxed{K_{d,i} = \frac{2\Delta\zeta_d}{K} = \frac{2 \times 0.093}{674.5} \approx \mathbf{2.76 \times 10^{-4}}\,\text{count}\cdot\text{s/deg}}$$
+</div>
+
+<h4>微分低通濾波器</h4>
+<div class="equation">
+$$\omega_c = 5\omega_n = 62.83\,\text{rad/s} \implies \boxed{f_c = \frac{\omega_c}{2\pi} \approx \mathbf{10.0\,\text{Hz}}}$$
+</div>
+</div>
+
+<div class="section" id="sec-verify">
+<h2>10. 數值驗證與最終參數</h2>
+
+<h3>10.1 理論值 vs. 實務保守推薦</h3>
+<p>上述 $K_{p,o} \approx 10.6$ 為<strong>理想二階模型</strong>的理論值。真實系統中未建模動態會額外侵蝕相位裕度。建議採用「保守到中等」策略：</p>
+<table>
+<tr><th>情境</th><th>$K_{p,o}$</th><th>$K_{p,i}$</th><th>$K_{i,i}$</th><th>對應 $f_n$</th><th>對應 $\zeta$</th><th>備註</th></tr>
+<tr><td><strong>理論計算</strong></td><td>10.6</td><td>0.022</td><td>0.042</td><td>2.0 Hz</td><td>0.707</td><td>理想模型，無未建模動態</td></tr>
+<tr><td>A 保守</td><td>4.0</td><td>0.020</td><td>0.038</td><td>1.4 Hz</td><td>0.75</td><td>優先不炸機，初學者首選</td></tr>
+<tr><td><strong>B 均衡</strong></td><td><strong>6.0</strong></td><td><strong>0.025</strong></td><td><strong>0.047</strong></td><td><strong>1.7 Hz</strong></td><td><strong>0.80</strong></td><td><strong>推薦起始點，預留延遲裕度</strong></td></tr>
+<tr><td>C 靈敏</td><td>8.0</td><td>0.035</td><td>0.066</td><td>2.0 Hz</td><td>0.90</td><td>競速手感，需確認無震盪</td></tr>
+</table>
+
+<h3>10.2 最終設計參數總表（Roll 軸，懸停工作點）</h3>
+<table>
+<tr><th>參數</th><th>理論值</th><th>實務推薦值（均衡 B）</th><th>單位</th></tr>
+<tr><td><strong>外環比例</strong> $K_{p,o}$</td><td>10.6</td><td><strong>6.0</strong></td><td>1/s (Hz)</td></tr>
+<tr><td><strong>內環比例</strong> $K_{p,i}$</td><td>0.022</td><td><strong>0.025</strong></td><td>count/(deg/s)</td></tr>
+<tr><td><strong>內環積分</strong> $K_{i,i}$</td><td>0.042</td><td><strong>0.047</strong></td><td>count/(deg·s)</td></tr>
+<tr><td><strong>內環微分</strong> $K_{d,i}$</td><td>0（或 $2.8\times 10^{-4}$）</td><td><strong>0（或微調）</strong></td><td>count·s/deg</td></tr>
+<tr><td><strong>D-term LPF</strong> $f_c$</td><td>10</td><td><strong>10</strong></td><td>Hz</td></tr>
+<tr><td><strong>目標閉迴路頻寬</strong> $f_n$</td><td>2.0</td><td><strong>1.7</strong></td><td>Hz</td></tr>
+<tr><td><strong>目標阻尼比</strong> $\zeta$</td><td>0.707</td><td><strong>0.80</strong></td><td>—</td></tr>
+</table>
+
+<div class="box success">
+<div class="box-title">B 均衡組合推薦邏輯</div>
+將外環從 10.6 降至 6.0（約 -43%），相當於把理論 $\omega_n$ 從 12.6 rad/s 壓縮到約 8.5 rad/s（$f_n \approx 1.35$ Hz，簡化公式），但配合略高的 $K_{p,i}=0.025$，實際閉迴路頻寬約 <strong>1.7 Hz</strong>，阻尼比約 <strong>0.8</strong>，在延遲邊界內留有充足裕度。
+</div>
+
+<h3>10.3 驗證公式速查</h3>
+<div class="equation">
+$$\boxed{\omega_n^2 = K K_{p,i} K_{p,o}} \qquad \boxed{2\zeta\omega_n = p_{aero} + K K_{p,i}}$$
+$$\boxed{K_{p,i} = \frac{2\zeta\omega_n - p_{aero}}{K}} \qquad \boxed{K_{p,o} = \frac{\omega_n^2}{2\zeta\omega_n - p_{aero}}}$$
+$$\boxed{K_{i,i} = (0.1 \sim 0.2)\,K_{p,i}\,\omega_n} \qquad \boxed{K_{d,i} = \frac{2\Delta\zeta_d}{K}}$$
+</div>
+<div class="box info">
+<div class="box-title">穩定性判據</div>
+$$\omega_n \tau_{total} < 0.3 \sim 0.5 \quad \text{且} \quad (1+\tau_m p_{aero})(p_{aero}+KK_{p,i}) > \tau_m \omega_n^2$$
+</div>
+</div>
+
+<div class="section" id="sec-calibration">
+<h2>11. 系統識別與實驗校準 SOP</h2>
+
+<h3>11.1 階段一：靜態推力台校準</h3>
+<p><strong>目的</strong>：獲取 $T_{max}$、$\text{PWM}_0$、$c''$</p>
+<p><strong>設備</strong>：微型測力台（解析度 0.1g）、可調 PWM 訊號源、電源供應器</p>
+<ol>
+<li>將單顆馬達固定於測力台上，確保推力方向垂直於感測面。</li>
+<li>從 PWM=0 開始步進增加（步距 5~10 count），記錄每個 PWM 值對應的靜態推力。</li>
+<li>記錄馬達開始持續轉動的最小 PWM 為 $\text{PWM}_0$（死區邊界）。</li>
+<li>使用最小平方法擬合 $T = c''(\text{PWM} - \text{PWM}_0)^2$，求出 $c''$。</li>
+<li>驗證滿油門推力是否達到預期推重比（$T_{max}/W \approx 4$）。</li>
+</ol>
+
+<h3>11.2 階段二：自由衰減測試</h3>
+<p><strong>目的</strong>：量測 $b_{aero}$（氣動阻尼係數）</p>
+<ol>
+<li>將無人機安裝於單軸旋轉測試架上，確保重心精確位於旋轉軸心。</li>
+<li>開迴路控制：給定固定油門 $\text{PWM}_{op}$（不啟用 PID 回授），使馬達維持穩定轉速。</li>
+<li>手動給予機體一初始角度擾動（例如 $20^\circ$）後釋放，記錄陀螺儀角速度 $\omega(t)$ 衰減波形。</li>
+<li>對量測數據進行指數擬合：$\omega(t) = \omega_0 e^{-t/\tau_{decay}}$。</li>
+<li>計算被動氣動阻尼係數：$\boxed{b_{aero} = \frac{I}{\tau_{decay}}}$</li>
+</ol>
+
+<h3>11.3 階段三：Relay-Feedback Autotune</h3>
+<p><strong>目的</strong>：獲取臨界週期 $P_u$、臨界增益 $K_u$，反推等效延遲 $\tau_{total}$</p>
+<p><strong>原理</strong>：在內環加入 Relay 繼電器非線性元件（輸出在 $\pm h$ 之間切換），誘導系統產生等幅極限環（Limit Cycle）震盪。</p>
+<ol>
+<li>關閉外環（或設 $K_{p,o} = 0$），僅保留內環 P 控制。</li>
+<li>在內環誤差通道串接 Relay（幅值 $h = 10 \sim 30$ count）。</li>
+<li>記錄系統產生的等幅震盪波形，量測震盪週期 $P_u$（s）與角速度響應幅值 $a$（deg/s）。</li>
+<li>計算描述函數等效臨界增益：$\boxed{K_u = \frac{4h}{\pi a}}$</li>
+<li>計算臨界角頻率：$\boxed{\omega_u = \frac{2\pi}{P_u}}$</li>
+<li>估算總等效延遲：$\boxed{\tau_{total} \approx \frac{P_u}{4}}$</li>
+</ol>
+
+<h3>11.4 階段四：閉迴路階躍響應驗證</h3>
+<ol>
+<li>將估算增益燒錄至飛控。</li>
+<li>在測試架上給予小角度階躍指令（例如 $5^\circ$）。</li>
+<li>記錄實際角度響應，量測實際超調量 $\%OS$ 與上升時間 $t_r$。</li>
+<li>反推實際 $\zeta$ 與 $\omega_n$：
+<div class="equation">
+$$\zeta_{actual} = \frac{-\ln(\%OS/100)}{\sqrt{\pi^2 + \ln^2(\%OS/100)}}, \quad \omega_{n,actual} \approx \frac{1.8}{t_r}$$
+</div>
+</li>
+<li>與設計目標比較，若偏差 > 20%，檢查 $K$ 或 $b_{aero}$ 估算是否準確。</li>
+</ol>
+
+<h3>11.5 漸進式實飛調參法</h3>
+<pre>
+[測試架驗證] ──► [繫留飛行] ──► [低空懸停] ──► [溫和機動] ──► [全機動]
+   K_p,i 保持不變     微調 ±10%      依油門修正      觀察震盪      最終優化
+   K_p,o 保持不變     K_p,o 調 ±10%   K_p,o         K_p,o        鎖定參數
+</pre>
+<p><strong>每一階段的通過標準</strong>：</p>
+<ul>
+<li><strong>測試架</strong>：無持續震盪，階躍響應超調 < 10%</li>
+<li><strong>繫留飛行</strong>：無高頻抖動，能穩定懸停</li>
+<li><strong>低空懸停</strong>：無漂移，風擾後能自行恢復</li>
+<li><strong>溫和機動</strong>：俯仰/橫滾 $30^\circ$ 內無異常震盪</li>
+<li><strong>全機動</strong>：滿油門翻滾後能迅速穩定</li>
+</ul>
+</div>
+
+<div class="section" id="sec-advanced">
+<h2>12. 進階主題與延伸討論</h2>
+
+<h3>12.1 Yaw 軸控制差異</h3>
+<table>
+<tr><th>特性</th><th>Roll/Pitch</th><th>Yaw</th></tr>
+<tr><td>致動器</td><td>推力差動（$\propto k_T$）</td><td>反扭矩（$\propto k_Q$）</td></tr>
+<tr><td>慣量</td><td>$\approx 4.2\times 10^{-5}$</td><td>$\approx 8.8\times 10^{-5}$</td></tr>
+<tr><td>氣動阻尼</td><td>顯著（揮舞 + 風阻）</td><td>較弱（主要為機身風阻）</td></tr>
+<tr><td>典型 $K_{p,i}$</td><td>0.02 ~ 0.15</td><td>0.5 ~ 2.0（單位可能不同）</td></tr>
+</table>
+<div class="box warning">
+<div class="box-title">建議</div>
+Yaw 軸需要更高的 $K_{p,i}$ 才能達到相同頻寬，更容易出現低頻振盪。<strong>建議獨立調參，不要直接複用 Roll/Pitch 的增益比例。</strong>
+</div>
+
+<h3>12.2 油門-姿態耦合（Thrust-Torque Coupling）</h3>
+<p>當油門劇烈變化時，會產生兩類耦合效應：</p>
+<ol>
+<li><strong>推力變化引起的力矩擾動</strong>：若四顆馬達的 $k_T$ 不完全匹配，油門變化會產生非預期的 Roll/Pitch 力矩。</li>
+<li><strong>陀螺儀進動效應</strong>：高速旋轉的馬達-槳葉系統構成陀螺儀，當機體姿態變化時產生進動力矩：
+<div class="equation">
+$$\tau_{gyro} = \sum_{i=1}^{4} I_{rotor}\Omega_i(\boldsymbol{\omega} \times \mathbf{e}_{z,i})$$
+</div>
+對於微型四軸，$\tau_{gyro}$ 通常小於 5% 的控制力矩，但在高速翻滾（flip）時不可忽略。
+</li>
+</ol>
+
+<h3>12.3 增益排程（Gain Scheduling）</h3>
+<p>對於需要在全油門範圍內保持穩定動態的應用（如競速、花式飛行），建議實施增益排程：</p>
+<div class="equation">
+$$K_{p,i}(\text{throttle}) = K_{p,i,hover} \cdot \frac{\text{throttle} - \text{PWM}_0}{\text{PWM}_{hover} - \text{PWM}_0}$$
+</div>
+<p>簡化實作（分段常數）：</p>
+<ul>
+<li>低油門（PWM < 60）：$K_{p,i} = K_{p,i,low}$</li>
+<li>中油門（$60 \leq$ PWM $\leq 140$）：$K_{p,i} = K_{p,i,mid}$</li>
+<li>高油門（PWM > 140）：$K_{p,i} = K_{p,i,high}$</li>
+</ul>
+
+<h3>12.4 風擾與外環積分項</h3>
+<p>在持續風擾環境下，外環可加入積分項 $K_{i,o}$：</p>
+<div class="equation">
+$$\omega_{cmd} = K_{p,o}(\theta_{cmd} - \theta) + K_{i,o}\int(\theta_{cmd} - \theta)dt$$
+</div>
+<ul>
+<li>外環積分項會降低相位裕度，建議 $K_{i,o} \ll K_{p,o}^2/10$</li>
+<li>外環積分飽和風險更高，必須啟用 Anti-Windup</li>
+<li>對於微型四軸，外環積分通常非必要（內環積分已能處理大部分風擾）</li>
+</ul>
+</div>
+
+<div class="section" id="sec-appendix">
+<h2>13. 附錄</h2>
+
+<h3>13.1 核心公式速查表</h3>
+
+<h4>幾何與慣量</h4>
+<div class="equation">
+$$l = \frac{r}{\sqrt{2}}$$
+$$I_{xx} = 4m_{motor}l^2 + \frac{1}{4}m_{rest}R_{rest}^2 + \frac{1}{12}m_{batt}(W_{batt}^2 + H_{batt}^2)$$
+$$I_{yy} = 4m_{motor}l^2 + \frac{1}{4}m_{rest}R_{rest}^2 + \frac{1}{12}m_{batt}(L_{batt}^2 + H_{batt}^2)$$
+</div>
+
+<h4>推力與混控</h4>
+<div class="equation">
+$$c'' = \frac{T_{max,single}}{(\text{PWM}_{max} - \text{PWM}_0)^2}, \quad k_T(\text{PWM}_{op}) = 2c''(\text{PWM}_{op} - \text{PWM}_0)$$
+$$k_{eff} = 4lk_T, \quad K = \frac{k_{eff}}{I} \cdot \frac{180}{\pi}$$
+</div>
+
+<h4>系統動態與 PID 合成</h4>
+<div class="equation">
+$$\omega_n = \sqrt{KK_{p,i}K_{p,o}}, \quad \zeta = \frac{b_{aero}}{2I\omega_n} + \frac{KK_{p,i}}{2\omega_n}$$
+$$K_{p,o} = \frac{2\zeta_{target}I\omega_n - b_{aero}}{I\omega_n^2}, \quad K_{p,i} = \frac{2\zeta_{target}\omega_n - b_{aero}/I}{K}$$
+$$K_{p,i}^* = \frac{Ib_{aero}}{K}\,\text{(}\zeta\text{ 極小值點)}, \quad \zeta_{min} = \sqrt{\frac{IK_{p,o}}{b_{aero}}}$$
+</div>
+
+<h4>延遲不穩定性邊界</h4>
+<div class="equation">
+$$K_{p,i} < K_{u,i} = \frac{(1 + \tau_m p_{aero})p_{aero}}{K[\tau_m K_{p,o} - (1 + \tau_m p_{aero})]}$$
+$$\omega_n \cdot \tau_{total} < 0.3 \sim 0.5, \quad \tau_{total} = \tau_m + \tau_{ZOH} + \tau_{filter} + \tau_{calc}$$
+</div>
+
+<h4>完整 PID 擴充</h4>
+<div class="equation">
+$$K_{i,i} = (0.1 \sim 0.2) \cdot K_{p,i} \cdot \omega_n$$
+$$K_{d,i} = \frac{2\Delta\zeta_d}{K}, \quad \omega_c = (3 \sim 5)\omega_n$$
+</div>
+
+<h4>實驗校準</h4>
+<div class="equation">
+$$b_{aero} = \frac{I}{\tau_{decay}}, \quad K_u = \frac{4h}{\pi a}, \quad \omega_u = \frac{2\pi}{P_u}$$
+</div>
+
+<h3>13.2 常用常數與換算</h3>
+<table>
+<tr><th>常數</th><th>數值</th><th>單位</th></tr>
+<tr><td>$\pi$</td><td>3.14159</td><td>—</td></tr>
+<tr><td>$180/\pi$</td><td>57.2958</td><td>deg/rad</td></tr>
+<tr><td>$g$（重力加速度）</td><td>9.80665</td><td>m/s²</td></tr>
+<tr><td>CURIO 總重 $W$</td><td>0.569</td><td>N</td></tr>
+<tr><td>單馬達滿油門推力</td><td>0.569</td><td>N</td></tr>
+<tr><td>內環取樣頻率 $f_{inner}$</td><td>1000</td><td>Hz</td></tr>
+<tr><td>外環取樣頻率 $f_{outer}$</td><td>200</td><td>Hz</td></tr>
+</table>
+
+<h3>13.3 方法論總結：跨系統參考可行性</h3>
+<table>
+<tr><th>項目</th><th>是否可跨系統參考</th><th>關鍵原因</th></tr>
+<tr><td>外環 $K_{p,o}$</td><td>可以，但需搭配內環一起看</td><td>公式不含 $K$，是設計選擇；但外環過高會壓低 $\zeta_{min}$</td></tr>
+<tr><td>內環 $K_{p,i}$</td><td>不可以</td><td>正比於 $1/K$，且 $K$ 隨 PWM 工作點變化（非線性推力曲線）</td></tr>
+<tr><td>阻尼比 $\zeta$</td><td>部分可參考（超調量表通用）</td><td>由氣動阻尼（機體固有）與內環回授（可調）兩來源相加</td></tr>
+<tr><td>積分 $K_{i,i}$</td><td>不可以</td><td>與 $K$ 和 $\omega_n$ 耦合，且受取樣頻率影響</td></tr>
+<tr><td>微分 $K_{d,i}$</td><td>不可以</td><td>與 $K$ 成反比，且受濾波器參數影響</td></tr>
+</table>
+
+<h3>13.4 最終設計建議</h3>
+<ol>
+<li><strong>始終以物理模型為起點</strong>，給出合理的初始搜尋範圍，而非盲目試誤。</li>
+<li><strong>以懸停工作點為基準設計增益</strong>，預留高油門時的頻寬擴大餘裕。</li>
+<li><strong>外環與內環協同調整</strong>，避免單獨調高外環而忽視內環的穩定性邊界。</li>
+<li><strong>延遲是頻寬的真正天花板</strong>，不要僅憑取樣頻率判斷系統能力。</li>
+<li><strong>實驗校準不可替代</strong>，物理模型定位是「合理起始搜尋範圍」，最終參數必須以實測為準。</li>
+</ol>
+</div>
+
+<div class="footer">
+  <p><strong>CURIO 微型四軸飛行器雙環 PID 增益物理估算法與系統識別理論</strong></p>
+  <p>綜合完整版 v6 | 適用機型：CURIO 58g X 型微型四軸（可推廣至同級距機型）</p>
+  <p>最後更新：2026-08-06</p>
+</div>
+
+</div><!-- /container -->
+</body>
+</html>
