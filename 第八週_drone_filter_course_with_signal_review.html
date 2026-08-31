@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>濾波器種類與四軸無人機飛控應用 — 碩士班授課教材</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--accent:#38bdf8;--accent2:#a78bfa;--text:#e2e8f0;--muted:#94a3b8;--border:#334155;--ok:#4ade80;--warn:#fbbf24;--danger:#f87171;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.7}
+.container{max-width:1150px;margin:0 auto;padding:24px}
+h1{text-align:center;font-size:2.2rem;margin-bottom:8px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:var(--muted);margin-bottom:28px;font-size:1rem}
+.nav-tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:28px;border-bottom:1px solid var(--border);padding-bottom:14px;position:sticky;top:0;background:rgba(15,23,42,.95);backdrop-filter:blur(8px);z-index:100}
+.nav-tab{background:var(--card);border:1px solid var(--border);color:var(--muted);padding:10px 16px;border-radius:8px;cursor:pointer;font-size:.88rem;transition:all .2s;user-select:none}
+.nav-tab:hover{color:var(--text);border-color:var(--accent)}
+.nav-tab.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;font-weight:600}
+.tab-content{display:none;animation:fadeIn .3s ease}
+.tab-content.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:26px;margin-bottom:22px;box-shadow:0 4px 6px -1px rgba(0,0,0,.2)}
+.card h2{color:var(--accent);margin-top:0;font-size:1.35rem;border-left:4px solid var(--accent);padding-left:12px;margin-bottom:14px}
+.card h3{color:var(--accent2);margin-top:26px;font-size:1.1rem;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:12px}
+.card h4{color:#f472b6;margin-top:18px;font-size:1rem;margin-bottom:8px}
+.math-box{background:#0b1220;border:1px solid #1e3a5f;border-radius:8px;padding:16px 20px;margin:12px 0;font-family:'Courier New','SF Mono',monospace;font-size:.95rem;color:#7dd3fc;overflow-x:auto;white-space:pre-wrap;line-height:1.8}
+.math-box .eq{color:#c4b5fd}
+.math-box .res{color:#86efac;font-weight:bold}
+.math-box .cmt{color:#64748b}
+.highlight{color:#fbbf24;font-weight:bold}
+.param-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:16px}
+.param-card{background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:16px}
+.param-card h4{color:var(--accent);margin:0 0 8px 0;font-size:1rem}
+.param-card p{margin:0;color:var(--muted);font-size:.9rem;line-height:1.6}
+.param-card code{background:#1e293b;padding:2px 6px;border-radius:4px;color:var(--ok);font-size:.85rem}
+.tag{display:inline-block;background:rgba(56,189,248,.15);color:var(--accent);padding:2px 10px;border-radius:12px;font-size:.8rem;margin-right:6px;margin-bottom:6px}
+.tag.warn{background:rgba(251,191,36,.15);color:var(--warn)}
+.tag.ok{background:rgba(74,222,128,.15);color:var(--ok)}
+.tag.danger{background:rgba(248,113,113,.15);color:var(--danger)}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.92rem}
+th,td{border:1px solid var(--border);padding:10px 12px;text-align:left}
+th{background:#0b1220;color:var(--accent);font-weight:600}
+td{color:var(--text)}
+tr:nth-child(even){background:rgba(255,255,255,.02)}
+.note{background:rgba(251,191,36,.08);border-left:3px solid var(--warn);padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0;color:#fde68a;font-size:.92rem}
+.note.ok{background:rgba(74,222,128,.08);border-color:var(--ok);color:#86efac}
+.note.info{background:rgba(56,189,248,.08);border-color:var(--accent);color:#7dd3fc}
+.drone-diagram{background:#0b1220;border-radius:8px;padding:20px;text-align:center;font-family:'Courier New',monospace;color:var(--accent);margin:16px 0;line-height:1.6;overflow-x:auto}
+.step-flow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:16px 0}
+.step-box{background:var(--card);border:1px solid var(--accent);border-radius:8px;padding:10px 14px;font-size:.85rem;color:var(--accent);text-align:center}
+.step-arrow{color:var(--muted);font-size:1.2rem}
+.code-block{background:#0b1220;border:1px solid #1e3a5f;border-radius:8px;padding:16px 20px;margin:12px 0;font-family:'Courier New','SF Mono',monospace;font-size:.88rem;color:#c4b5fd;overflow-x:auto;white-space:pre;line-height:1.6}
+.code-block .kw{color:#f472b6}
+.code-block .type{color:#38bdf8}
+.code-block .num{color:#fbbf24}
+.code-block .cmt{color:#64748b}
+.code-block .str{color:#86efac}
+ul,ol{margin-left:20px;margin-bottom:12px}
+li{margin-bottom:6px}
+p{margin-bottom:12px}
+.footer{text-align:center;color:var(--muted);font-size:.85rem;margin-top:40px;padding-top:20px;border-top:1px solid var(--border)}
+@media(max-width:768px){h1{font-size:1.6rem}.nav-tab{padding:8px 12px;font-size:.8rem}.card{padding:18px}.math-box{padding:12px 14px;font-size:.85rem}}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>濾波器種類與四軸無人機飛控應用</h1>
+<p class="subtitle">碩士班授課教材｜頻域分析 × 時域分析 × 現代飛控系統 × Betaflight 實務</p>
+<div class="nav-tabs">
+<button class="nav-tab active" onclick="switchTab('overview')">總覽</button>
+<button class="nav-tab" onclick="switchTab('signal')">訊號處理複習</button>
+<button class="nav-tab" onclick="switchTab('lpf')">LPF</button>
+<button class="nav-tab" onclick="switchTab('hpf')">HPF</button>
+<button class="nav-tab" onclick="switchTab('notch')">Notch</button>
+<button class="nav-tab" onclick="switchTab('complementary')">Complementary</button>
+<button class="nav-tab" onclick="switchTab('kalman')">EKF</button>
+<button class="nav-tab" onclick="switchTab('betaflight')">Betaflight 應用</button>
+</div>
+
+<!-- ==================== 總覽 ==================== -->
+<div id="overview" class="tab-content active">
+<div class="card">
+<h2>為何飛控需要濾波器？</h2>
+<p>四軸無人機的飛控系統（Flight Controller）必須從多個感測器（IMU、陀螺儀、加速度計、氣壓計、GPS）取得即時數據。然而，這些訊號混雜了：</p>
+<ul>
+<li><strong>高頻雜訊</strong>：馬達震動、螺旋槳氣動噪音（數百 Hz 至數 kHz）</li>
+<li><strong>低頻漂移</strong>：感測器零點偏移、溫度漂移</li>
+<li><strong>窄帶干擾</strong>：特定頻率的機械共振（如機臂共振頻率）</li>
+</ul>
+<p>濾波器的核心任務是<strong>分離有效訊號與干擾</strong>，確保 PID 控制器接收到乾淨的姿態與角速度反饋。</p>
+</div>
+
+<div class="card">
+<h2>時域 vs 頻域：雙重視角</h2>
+<table>
+<tr><th>特性</th><th>時域 (Time Domain)</th><th>頻域 (Frequency Domain)</th></tr>
+<tr><td>核心運算</td><td>卷積積分 / 差分方程</td><td>代數乘法（傳遞函數）</td></tr>
+<tr><td>描述對象</td><td>脈衝響應 h(t)、階躍響應</td><td>頻率響應 H(jω)、Bode 圖</td></tr>
+<tr><td>微分方程</td><td>直接可見（ODE 形式）</td><td>轉換為代數方程（s 域）</td></tr>
+<tr><td>離散化方法</td><td>直接差分近似</td><td>雙線性變換、脈衝不變法</td></tr>
+<tr><td>飛控實現</td><td>C 語言遞迴程式碼</td><td>係數設計與驗證</td></tr>
+<tr><td>調試工具</td><td>Blackbox 時域波形</td><td>FFT 頻譜分析</td></tr>
+</table>
+<div class="note info">
+核心關係：時域卷積 y(t)=x(t)*h(t) 對應頻域乘積 Y(s)=X(s)H(s)。嵌入式飛控最終執行時域差分方程，但參數設計通常在頻域完成。
+</div>
+</div>
+
+<div class="card">
+<h2>飛控系統中的濾波器分類總表</h2>
+<table>
+<tr><th>濾波器類型</th><th>頻域傳遞函數</th><th>時域形式</th><th>飛控應用</th><th>計算複雜度</th></tr>
+<tr><td>一階 IIR LPF (PT1)</td><td>H(s)=ωc/(s+ωc)</td><td>一階 ODE + 一階差分</td><td>陀螺儀/加速度計基礎降噪</td><td>極低</td></tr>
+<tr><td>二階 BiQuad LPF</td><td>標準二階系統</td><td>二階差分方程（5項遞迴）</td><td>馬達訊號濾波、D-term 濾波</td><td>低</td></tr>
+<tr><td>一階 HPF</td><td>H(s)=s/(s+ωc)</td><td>一階 ODE（微分+回授）</td><td>去除重力偏移、提取動態加速度</td><td>低</td></tr>
+<tr><td>Notch Filter</td><td>H(s)=(s²+ω₀²)/(s²+ω₀s/Q+ω₀²)</td><td>二階 ODE（阻尼振盪響應）</td><td>消除馬達/螺旋槳共振頻率</td><td>低</td></tr>
+<tr><td>互補濾波器</td><td>LPF+HPF=1</td><td>加權積分 + 誤差修正遞迴</td><td>融合陀螺儀與加速度計</td><td>低</td></tr>
+<tr><td>擴展卡爾曼濾波 EKF</td><td>時變傳遞函數</td><td>狀態預測 + 卡爾曼增益修正</td><td>多感測器融合、姿態估計</td><td>高</td></tr>
+<tr><td>滑動平均濾波 MAF</td><td>sinc 型頻率響應</td><td>FIR 卷積和（有限記憶）</td><td>簡易訊號平滑</td><td>低</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h2>飛控訊號處理流程圖</h2>
+<div class="drone-diagram">
+IMU原始數據 -> 硬體LPF(抗混疊) -> 數位濾波(軟體濾波) -> 姿態估計(EKF/互補) -> 濾波後反饋 -> PID控制器 -> 馬達PWM輸出
+</div>
+<p style="color:var(--muted);font-size:.85rem">現代飛控（Betaflight、ArduPilot、PX4）在硬體層與軟體層均部署多級濾波器，形成「濾波器級聯架構」。所有濾波器最終都必須轉換為時域的差分方程，才能在 MCU 上即時執行。</p>
+</div>
+</div>
+
+<!-- ==================== 訊號處理複習 ==================== -->
+<div id="signal" class="tab-content">
+<div class="card">
+<h2>為什麼用卷積運算時域響應？</h2>
+<p>這是飛控濾波器設計中最核心的數學問題。為什麼線性時不變（LTI）系統的時域響應可以用<strong>卷積（Convolution）</strong>求出？</p>
+<p>最根本的答案是：<span class="highlight">任何輸入訊號，都可以看成無數個「延遲後、加權後的 impulse（衝擊）」相加</span>；而 LTI 系統對每一個 impulse 的反應，就是 impulse response <span class="eq">h(t)</span>。利用線性與時不變性，把所有反應加起來，就自然得到卷積。</p>
+</div>
+
+<div class="card">
+<h2>1. LTI 系統的基本性質</h2>
+<p>假設一個系統：<span class="eq">x(t) → H → y(t)</span></p>
+<ul>
+<li><strong>x(t)</strong>：輸入訊號</li>
+<li><strong>y(t)</strong>：輸出訊號</li>
+<li><strong>h(t)</strong>：系統的 impulse response</li>
+</ul>
+<p>例如四軸無人機的 Roll rate dynamics：</p>
+<div class="math-box">τₓ(t) → G(s) → ωₓ(t)
+<span class="cmt">// 若已知 impulse response h(t)，則任意輸入的輸出皆可由卷積求得</span></div>
+
+<h3>線性（Linearity）</h3>
+<div class="math-box">若 x₁(t)→y₁(t) 且 x₂(t)→y₂(t)
+則 a·x₁(t)+b·x₂(t) → a·y₁(t)+b·y₂(t)
+<span class="cmt">// 輸入放大 a 倍，輸出也放大 a 倍；多個輸入的總響應等於個別響應之和</span></div>
+
+<h3>時不變性（Time Invariance）</h3>
+<div class="math-box">若 x(t)→y(t)
+則 x(t-τ)→y(t-τ)
+<span class="cmt">// 輸入延遲 τ 秒，輸出形狀不變，僅整體延遲 τ 秒</span></div>
+
+<div class="note ok">
+飛控系統中的濾波器（PT1、BiQuad、Notch）皆為 LTI 系統，因此卷積是分析它們時域行為的通用工具。
+</div>
+</div>
+
+<div class="card">
+<h2>2. 任意訊號的 Impulse 分解</h2>
+<p>這是最重要的一步。連續時間訊號 <span class="eq">x(t)</span> 可以表示為：</p>
+<div class="math-box"><span class="eq">x(t) = ∫₋∞^∞ x(τ)·δ(t-τ) dτ</span>
+<span class="cmt">// δ(t-τ) 為發生在時間 τ 的單位衝擊</span></div>
+<p>意思是：在每一個時間 <span class="eq">τ</span>，都有一個大小為 <span class="eq">x(τ)</span> 的 impulse。把所有時間的 impulses 加起來（積分），就重新構成原本的訊號。</p>
+
+<h3>直觀圖解</h3>
+<p>假設輸入是一連串小脈衝：</p>
+<div class="drone-diagram">
+Input x(t)
+  ↑    ↑      ↑       ↑    ↑
+  │    │      │       │    │
+──┴────┴──────┴───────┴────┴──→ t
+  τ₁   τ₂     τ₃      τ₄   τ₅
+
+每一個 x(τᵢ)·δ(t-τᵢ) 都是一個「加權、延遲」的衝擊
+</div>
+</div>
+
+<div class="card">
+<h2>3. 從 Impulse Response 到卷積</h2>
+
+<h3>步驟一：單一 Impulse 的響應</h3>
+<div class="math-box">輸入: δ(t) → 輸出: h(t)  （impulse response 的定義）</div>
+
+<h3>步驟二：延遲 Impulse 的響應（時不變性）</h3>
+<div class="math-box">輸入: δ(t-τ) → 輸出: h(t-τ)
+<span class="cmt">// 響應形狀不變，僅延遲 τ 秒</span></div>
+
+<h3>步驟三：加權 Impulse 的響應（線性）</h3>
+<div class="math-box">輸入: x(τ)·δ(t-τ) → 輸出: x(τ)·h(t-τ)
+<span class="cmt">// 輸入放大 x(τ) 倍，輸出也放大 x(τ) 倍</span></div>
+
+<h3>步驟四：疊加所有響應（線性疊加）</h3>
+<div class="math-box">原始輸入: x(t) = ∫ x(τ)·δ(t-τ) dτ
+每一個 impulse 產生: x(τ)·h(t-τ)
+利用線性系統的 superposition:
+
+<span class="res">y(t) = ∫₋∞^∞ x(τ)·h(t-τ) dτ = x(t) * h(t)</span>
+<span class="cmt">// 這就是卷積積分！</span></div>
+
+<div class="note">
+為什麼是 <span class="eq">h(t-τ)</span> 而不是 <span class="eq">h(τ)</span>？
+<br><br>
+<span class="eq">τ</span> 代表「這個輸入 impulse 發生的時間」。假設現在觀察輸出時間 <span class="eq">t</span>，那麼在過去 <span class="eq">τ</span> 發生的 impulse，到現在已經響應了 <span class="eq">t-τ</span> 秒。因此我們要看 impulse response 的 <span class="eq">h(t-τ)</span>。
+</div>
+</div>
+
+<div class="card">
+<h2>4. 一階系統範例</h2>
+<p>假設系統傳遞函數：</p>
+<div class="math-box"><span class="eq">G(s) = 1/(s+a)</span>
+
+其 impulse response 為:
+<span class="res">h(t) = e^(-at)·u(t)</span>
+
+假設輸入為 step input: x(t)=u(t)
+則輸出:
+<span class="eq">y(t) = x(t)*h(t) = ∫₋∞^∞ u(τ)·e^(-a(t-τ))·u(t-τ) dτ</span>
+
+由於兩個 unit step 限制積分範圍: 0 ≤ τ ≤ t
+<span class="eq">y(t) = ∫₀^t e^(-a(t-τ)) dτ = e^(-at) · ∫₀^t e^(aτ) dτ</span>
+
+<span class="res">y(t) = (1/a)·[1 - e^(-at)]</span>
+<span class="cmt">// 這正是 G(s)=1/(s+a) 對 step input 的時域響應</span></div>
+</div>
+
+<div class="card">
+<h2>5. 時域卷積 ↔ 頻域乘積</h2>
+<p>這也是卷積在控制系統中如此重要的原因：</p>
+<div class="math-box">時間域: <span class="eq">y(t) = x(t) * h(t)</span>
+Laplace 變換: <span class="eq">Y(s) = X(s)·H(s)</span>
+
+因此: <span class="eq">L{x(t)*h(t)} = X(s)·H(s)</span>
+
+<span class="res">時域 Convolution  ⟷  s-domain Multiplication</span>
+<span class="cmt">// 控制系統通常先寫 Y(s)=G(s)·U(s)，因為乘法比直接做卷積容易很多
+// 然後 y(t)=L⁻¹[G(s)·U(s)]，這個 inverse Laplace 本質上就是在求 y(t)=u(t)*h(t)</span></div>
+
+<div class="note info">
+飛控教材中的頻域分析（傳遞函數 H(s)、Bode 圖）與時域分析（差分方程、脈衝響應）透過 Laplace 變換緊密連結。嵌入式飛控最終執行的是時域差分方程，但參數設計通常在頻域完成。
+</div>
+</div>
+
+<div class="card">
+<h2>6. 系統的「記憶」直觀理解</h2>
+<p>假設你在四軸上瞬間施加一個 Roll torque：<span class="eq">τ(t)=δ(t)</span></p>
+<p>它不會只在那一瞬間有輸出。無人機會經歷：</p>
+<div class="step-flow">
+<div class="step-box">瞬間衝擊<br><small>δ(t)</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">角加速度<br><small>α(t)</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">角速度<br><small>ω(t)</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">持續受系統<br>dynamics 影響</div>
+</div>
+
+<p>所以現在的輸出 <span class="eq">y(t)</span> 其實是：</p>
+<div class="math-box"><span class="res">y(t) = ∫「過去輸入 x(τ)」×「到現在的響應 h(t-τ)」dτ</span>
+<span class="cmt">// 系統記住過去每一個瞬間輸入所造成的影響，然後在現在把所有尚未消失的影響累積起來</span></div>
+
+<div class="note ok">
+卷積並不是什麼「額外發明出來的數學技巧」。它實際上就是：系統記住過去每一個瞬間輸入所造成的影響，然後在現在把所有尚未消失的影響累積起來。這正是飛控濾波器（PT1、BiQuad）在時域中運作的本質。
+</div>
+</div>
+</div>
+
+<!-- ==================== LPF ==================== -->
+<div id="lpf" class="tab-content">
+<div class="card">
+<h2>一階低通濾波器（First-Order LPF / PT1）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">連續時間傳遞函數:
+<span class="eq">H(s) = Y(s)/X(s) = ωc/(s+ωc) = 1/(τs+1)</span>
+
+其中 <span class="highlight">ωc = 2π·fc</span> 為截止角頻率，<span class="highlight">τ = 1/ωc</span> 為時間常數。
+
+頻率響應（令 s=jω）:
+<span class="eq">H(jω) = 1/(1+jωτ) = 1/(1+jω/ωc)</span>
+
+幅度響應:
+<span class="eq">|H(jω)| = 1/√(1+(ω/ωc)²)</span>
+
+• ω=0 (DC):    |H|=1  (0 dB)
+• ω=ωc:        |H|=1/√2 ≈ 0.707  (-3 dB)
+• ω→∞:         |H|→0  (-20 dB/decade)
+
+相位響應:
+<span class="eq">∠H(jω) = -arctan(ω/ωc)</span>
+
+• ω=0:    相位 = 0°
+• ω=ωc:   相位 = -45°
+• ω→∞:    相位 → -90°
+
+群延遲（時域相位延遲度量）:
+<span class="eq">τg(ω) = -d∠H/dω = τ/(1+(ωτ)²)</span>
+
+• 低頻時 τg ≈ τ = 1/ωc（最大延遲）
+• 高頻時 τg → 0</div>
+
+<h3>時域分析 — 微分方程</h3>
+<div class="math-box">由 H(s)=1/(τs+1)，交叉相乘取反拉氏變換:
+<span class="eq">τ·dy(t)/dt + y(t) = x(t)</span>
+<span class="eq">dy(t)/dt = (1/τ)·[x(t)-y(t)]</span>
+<span class="cmt">// 輸出 y(t) 以速率 1/τ 向輸入 x(t)「追趕」</span></div>
+
+<h3>時域分析 — 脈衝響應 h(t)</h3>
+<div class="math-box">對 x(t)=δ(t)，初始條件 y(0⁺)=1/τ:
+<span class="res">h(t) = (1/τ)·e^(-t/τ)·u(t)</span>
+<span class="cmt">// 系統對瞬間衝擊的記憶呈指數衰減，τ 越大衰減越慢</span></div>
+
+<h3>時域分析 — 階躍響應 g(t)</h3>
+<div class="math-box">對 x(t)=u(t):
+<span class="res">g(t) = [1-e^(-t/τ)]·u(t)</span>
+• t=τ:  g(τ)=1-e⁻¹≈0.632 (63.2%終值)
+• t=3τ: g(3τ)≈0.950 (95%終值)
+• t=5τ: g(5τ)≈0.993 (99.3%終值)</div>
+
+<h3>時域分析 — 卷積積分</h3>
+<div class="math-box">y(t) = x(t)*h(t) = (1/τ)·∫₀^t x(τ')·e^(-(t-τ')/τ) dτ'
+<span class="cmt">// 指數加權移動平均：越近輸入權重越大</span></div>
+
+<h3>離散時域 — 差分方程（後向歐拉法）</h3>
+<div class="math-box">dy/dt≈[y[n]-y[n-1]]/Ts 代入:
+<span class="res">y[n] = α·x[n] + (1-α)·y[n-1]</span>
+α = Ts/(τ+Ts) = ωc·Ts/(1+ωc·Ts)
+<span class="cmt">// 嵌入式最常用遞迴式！1次乘法+1次加法+1次移位
+// 即為 Betaflight 中 pt1FilterApply() 的核心實現</span></div>
+
+<div class="note">
+時域直觀：y[n] 是「當前輸入的小部分 α」加上「過去輸出的絕大部分 (1-α)」。α 越小系統越「懶惰」，越依賴歷史；α 越大越「敏感」，反應快但雜訊大。
+</div>
+</div>
+
+<div class="card">
+<h2>二階低通濾波器（BiQuad / PT2）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">標準二階低通傳遞函數:
+<span class="eq">H(s) = ωc²/(s²+2ζωc·s+ωc²)</span>
+
+ζ（zeta）為阻尼比。ζ=1/√2≈0.707 時為 Butterworth 響應，具有最大平坦通帶。
+
+頻率響應幅度:
+<span class="eq">|H(jω)| = 1/√[(1-(ω/ωc)²)²+(2ζω/ωc)²]</span>
+
+• 低頻 (ω&lt;&lt;ωc): |H|≈1 (0 dB)
+• 截止點 (ω=ωc): |H|=1/(2ζ) 
+  - Butterworth (ζ=0.707): |H|=1/√2 (-3 dB)
+• 高頻 (ω&gt;&gt;ωc): |H|≈(ωc/ω)² → -40 dB/decade
+
+相位響應:
+<span class="eq">∠H(jω) = -arctan[2ζω/ωc / (1-(ω/ωc)²)]</span>
+
+• ω=0:    0°
+• ω=ωc:   -90°
+• ω→∞:   -180°
+
+群延遲比一階更大，尤其在截止頻率附近。</div>
+
+<h3>時域分析 — 微分方程</h3>
+<div class="math-box"><span class="eq">d²y/dt² + 2ζωc·dy/dt + ωc²·y = ωc²·x</span>
+<span class="cmt">// 與彈簧-阻尼-質量系統（Spring-Mass-Damper）同構</span></div>
+
+<h3>時域分析 — 脈衝響應（三種阻尼情況）</h3>
+<div class="math-box">欠阻尼 (0&lt;ζ&lt;1):
+<span class="res">h(t)=(ωc/√(1-ζ²))·e^(-ζωc·t)·sin(ωd·t)·u(t)</span>
+ωd=ωc·√(1-ζ²)
+
+臨界阻尼 (ζ=1):
+<span class="res">h(t)=ωc²·t·e^(-ωc·t)·u(t)</span>
+
+過阻尼 (ζ&gt;1):
+<span class="res">h(t)=[ωc/(2√(ζ²-1))]·[e^(-(ζ-√(ζ²-1))ωc·t)-e^(-(ζ+√(ζ²-1))ωc·t)]·u(t)</span></div>
+
+<h3>時域分析 — 階躍響應（欠阻尼）</h3>
+<div class="math-box"><span class="res">g(t)=[1-e^(-ζωc·t)·(cos(ωd·t)+(ζ/√(1-ζ²))·sin(ωd·t))]·u(t)</span>
+• 超調量: OS=e^(-ζπ/√(1-ζ²))×100%
+  - ζ=0.707 (Butterworth): OS≈4.3%
+  - ζ=1.0 (臨界阻尼): OS=0%
+• 安定時間(±2%): ts≈4/(ζωc)</div>
+
+<h3>離散時域 — BiQuad 差分方程</h3>
+<div class="math-box">經雙線性變換（Tustin 法）:
+<span class="res">y[n]=b0·x[n]+b1·x[n-1]+b2·x[n-2]-a1·y[n-1]-a2·y[n-2]</span>
+<span class="cmt">// 需儲存 x[n-1],x[n-2],y[n-1],y[n-2]
+// 每週期: 3次乘法+4次加法+2次移位
+// Betaflight 的 biquadFilter_t 結構儲存這些係數</span></div>
+
+<div class="note ok">
+飛控選擇：Butterworth（ζ=1/√2）通帶最平坦，超調僅4.3%，是飛控 BiQuad 首選阻尼比。
+</div>
+</div>
+
+<div class="card">
+<h2>PT1 / PT2 / PT3 級聯濾波器</h2>
+<h3>頻域分析</h3>
+<div class="math-box">PTn:  H(s) = [ωc/(s+ωc)]ⁿ
+
+PT1: -20 dB/dec 衰減
+PT2: -40 dB/dec 衰減  
+PT3: -60 dB/dec 衰減
+
+級聯的優點是計算簡單、數值穩定，且每級可獨立調整截止頻率。</div>
+
+<h3>時域分析</h3>
+<div class="math-box">n個相同PT1級聯的脈衝響應:
+<span class="res">h_n(t)=[t^(n-1)/((n-1)!·τ^n)]·e^(-t/τ)·u(t)</span>
+<span class="cmt">// Gamma分布的PDF形式
+// n=1: 指數分布 | n=2: Erlang分布 | n=3: 拋物線上升後指數衰減</span>
+
+階躍響應初始斜率:
+• PT1: dg/dt|₀=1/τ
+• PT2: dg/dt|₀=0（S型曲線，更平滑）
+• PT3: dg/dt|₀=0, d²g/dt²|₀=0（更延遲但更平滑）</div>
+</div>
+</div>
+
+<!-- ==================== HPF ==================== -->
+<div id="hpf" class="tab-content">
+<div class="card">
+<h2>高通濾波器（HPF）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">一階高通傳遞函數:
+<span class="eq">H(s) = s/(s+ωc) = τs/(τs+1)</span>
+
+頻率響應（令 s=jω）:
+<span class="eq">H(jω) = jωτ/(1+jωτ)</span>
+
+幅度響應:
+<span class="eq">|H(jω)| = (ω/ωc)/√(1+(ω/ωc)²)</span>
+
+• ω=0 (DC):    |H|=0  (-∞ dB，完全衰減)
+• ω=ωc:        |H|=1/√2 ≈ 0.707  (-3 dB)
+• ω→∞:         |H|→1  (0 dB，無衰減通過)
+
+相位響應:
+<span class="eq">∠H(jω) = 90° - arctan(ω/ωc)</span>
+
+• ω=0:    相位 = +90°
+• ω=ωc:   相位 = +45°
+• ω→∞:    相位 → 0°
+
+與 LPF 的關係:
+<span class="eq">H_LPF(s) + H_HPF(s) = ωc/(s+ωc) + s/(s+ωc) = 1</span>
+<span class="cmt">// 這是「互補」的數學根源：LPF+HPF=1</span></div>
+
+<h3>時域分析 — 微分方程</h3>
+<div class="math-box">τ·s·Y(s)+Y(s)=τ·s·X(s)
+<span class="eq">τ·dy/dt + y = τ·dx/dt</span>
+<span class="eq">dy/dt = dx/dt - (1/τ)·y</span>
+<span class="cmt">// 右邊出現輸入導數項 dx/dt，對「變化率」敏感，對恆定輸入無響應</span></div>
+
+<h3>時域分析 — 脈衝響應</h3>
+<div class="math-box">H(s)=1-ωc/(s+ωc)
+<span class="res">h(t)=δ(t)-(1/τ)·e^(-t/τ)·u(t)</span>
+=δ(t)-h_LPF(t)
+<span class="cmt">// 正衝擊直接通過 + 負指數尾確保總面積為零（直流增益=0）</span></div>
+
+<h3>時域分析 — 階躍響應</h3>
+<div class="math-box">對 x(t)=u(t)，dx/dt=δ(t):
+<span class="res">g(t)=e^(-t/τ)·u(t)</span>
+• t=0: g(0)=1（瞬間通過）
+• t=τ: g(τ)=e⁻¹≈0.368
+• t→∞: g(∞)=0（直流完全衰減）
+<span class="res">g_LPF(t)+g_HPF(t)=1</span></div>
+
+<h3>時域分析 — 等價實現</h3>
+<div class="math-box">y(t)=x(t)-(1/τ)·∫₀^t x(τ')·e^(-(t-τ')/τ)dτ'
+= x(t) - y_LPF(t)
+<span class="cmt">// HPF = 原始訊號 - LPF輸出，有時比直接HPF更數值穩定</span></div>
+
+<h3>離散時域 — 差分方程</h3>
+<div class="math-box">y[n]=α·(y[n-1]+x[n]-x[n-1])
+α=τ/(τ+Ts)=1/(1+ωc·Ts)
+<span class="res">y[n]=α·y[n-1]+α·x[n]-α·x[n-1]</span>
+驗證直流: x[n]=C → y[n]=α·y[n-1] → y[n]→0 ✓</div>
+
+<div class="note">
+飛控應用：加速度計測量值 x[n] 含重力（低頻恆定）與動態加速度（高頻）。HPF輸出中重力被指數衰減至零，僅保留動態加速度瞬間變化。
+</div>
+</div>
+</div>
+
+<!-- ==================== Notch ==================== -->
+<div id="notch" class="tab-content">
+<div class="card">
+<h2>陷波濾波器（Notch Filter）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">連續時間傳遞函數:
+<span class="eq">H(s) = (s²+ω₀²)/(s²+(ω₀/Q)s+ω₀²)</span>
+
+其中 <span class="highlight">ω₀=2π·f₀</span> 為中心角頻率，<span class="highlight">Q</span> 為品質因數。Q 值越高，陷波越窄越深。
+
+頻率響應幅度:
+<span class="eq">|H(jω)| = |ω₀²-ω²| / √[(ω₀²-ω²)²+(ω₀ω/Q)²]</span>
+
+• ω=0:       |H|=1  (0 dB)
+• ω=ω₀:      |H|=0  (-∞ dB，完全衰減)
+• ω→∞:      |H|→1  (0 dB)
+
+-3 dB 帶寬: <span class="eq">BW = ω₀/Q</span> (rad/s) 或 <span class="eq">BW = f₀/Q</span> (Hz)
+
+相位響應:
+<span class="eq">∠H(jω) = -arctan[(ω₀ω/Q)/(ω₀²-ω²)]</span>
+
+• ω&lt;ω₀:  相位接近 0°
+• ω=ω₀:  相位跳變（理論上從 +90° 跳到 -90°）
+• ω&gt;ω₀:  相位接近 -180°
+
+高 Q 值的代價：相位在 ω₀ 附近變化極快，導致群延遲劇增。
+群延遲 τg(ω) 在 ω=ω₀ 處達到最大值，與 Q 成正比。</div>
+
+<h3>時域分析 — 微分方程</h3>
+<div class="math-box"><span class="eq">d²y/dt²+(ω₀/Q)·dy/dt+ω₀²·y = d²x/dt²+ω₀²·x</span>
+<span class="cmt">// 右邊同時出現x的二階導數和x本身</span></div>
+
+<h3>時域分析 — 脈衝響應（高Q值）</h3>
+<div class="math-box">H(s)=1-[(ω₀/Q)s]/[s²+(ω₀/Q)s+ω₀²]
+<span class="res">h(t)=δ(t)-(ω₀/Q)·e^(-ω₀t/(2Q))·[cos(ωd·t)-(ω₀/(2Qωd))·sin(ωd·t)]·u(t)</span>
+ωd≈ω₀ (當Q&gt;&gt;1)
+<span class="cmt">// 瞬間衝擊通過 + 阻尼振盪尾（中心頻率≈ω₀）
+// 振盪尾「抵消」持續時間為2π/ω₀的輸入成分</span></div>
+
+<h3>時域分析 — 對正弦輸入 x(t)=sin(ω₀t) 的響應</h3>
+<div class="math-box">d²x/dt²=-ω₀²·sin(ω₀t)=-ω₀²·x
+→ d²x/dt²+ω₀²·x=0
+
+方程變為齊次:
+d²y/dt²+(ω₀/Q)·dy/dt+ω₀²·y=0
+
+<span class="res">穩態: y_ss(t)=0</span>
+<span class="cmt">// 完美驗證：ω₀頻率正弦被完全衰減！
+// 瞬態呈現指數衰減振盪，時間常數≈2Q/ω₀</span></div>
+
+<h3>時域分析 — 脈衝響應「記憶長度」與 Q 值</h3>
+<div class="math-box">衰減時間常數: τ_decay=2Q/ω₀=Q/(π·f₀)
+• Q=2, f₀=200Hz: τ≈3.2ms (~25個8kHz取樣點)
+• Q=5, f₀=200Hz: τ≈8.0ms (~64個取樣點)
+• Q=10, f₀=200Hz: τ≈15.9ms (~127個取樣點)
+
+<span class="cmt">// 高Q陷波引入顯著時域記憶/相位延遲
+// 飛控權衡: 高Q頻域精準但時域延遲大；低Q頻域較寬但延遲小</span></div>
+
+<h3>離散時域 — BiQuad 實現</h3>
+<div class="math-box">y[n]=b0·x[n]+b1·x[n-1]+b2·x[n-2]-a1·y[n-1]-a2·y[n-2]
+
+雙線性變換係數（Tustin 法）:
+K=tan(π·f₀/fs), K2=K², D=1+K/Q+K2
+
+b0=(1+K2)/D, b1=2·(K2-1)/D, b2=b0
+a1=b1, a2=(1-K/Q+K2)/D
+
+<span class="cmt">// 陷波對稱性 b0=b2 確保:
+// • 直流增益=1 • 奈奎斯特增益=1 • 僅ω₀處增益=0</span></div>
+
+<div class="note">
+高Q的時域代價：Betaflight建議Q≤250（動態陷波寬版）或Q≤5（靜態陷波）。過高Q使脈衝響應振盪尾過長，快速機動時產生可感知控制延遲。
+</div>
+</div>
+
+<div class="card">
+<h2>動態陷波濾波器（Dynamic Notch）</h2>
+<h3>頻域分析</h3>
+<div class="math-box">現代飛控面臨的挑戰：馬達轉速隨油門變化，導致共振頻率漂移。
+Betaflight 4.0+ 引入動態陷波濾波器:
+
+<span class="eq">f_notch(t) = k · RPM(t)/60 · N_blades</span>
+
+• k: 諧波次數（通常為 1 或 2）
+• RPM(t): 即時馬達轉速（由 DShot 回傳或油門估算）
+• N_blades: 螺旋槳葉片數
+
+動態陷波會根據即時轉速調整中心頻率 f₀，確保共振頻率始終位於陷波中心。
+
+時變傳遞函數:
+<span class="eq">H(s,t) = (s²+ω₀(t)²)/(s²+(ω₀(t)/Q)s+ω₀(t)²)</span></div>
+
+<h3>時域分析 — 時變系統行為</h3>
+<div class="math-box"><span class="eq">d²y/dt²+(ω₀(t)/Q)·dy/dt+ω₀(t)²·y = d²x/dt²+ω₀(t)²·x</span>
+
+ω₀(t)=2π·k·RPM(t)/60·N_blades
+
+<span class="cmt">// 時變系統，準靜態近似成立
+// RPM變化率&lt;100Hz/s &lt;&lt; 系統響應時間~10ms</span></div>
+</div>
+</div>
+
+<!-- ==================== Complementary ==================== -->
+<div id="complementary" class="tab-content">
+<div class="card">
+<h2>互補濾波器（Complementary Filter）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">核心思想：融合兩個感測器的優勢
+• <strong>陀螺儀（Gyro）</strong>：高頻響應好，但低頻有漂移（積分誤差累積）
+• <strong>加速度計（Accel）</strong>：低頻準確（可測重力方向），但高頻受振動干擾
+
+頻域分解原理:
+設真實姿態角為 θ(t)，可分解為低頻與高頻成分:
+<span class="eq">θ(t) = θ_LF(t) + θ_HF(t)</span>
+
+陀螺儀測量:  θ_gyro(t) = θ_HF(t) + drift(t)  ← 高頻準確
+加速度計測量: θ_accel(t) = θ_LF(t) + noise(t)  ← 低頻準確
+
+一階互補濾波器:
+<span class="eq">θ̂(s) = G_LPF(s)·θ_accel(s) + G_HPF(s)·θ_gyro(s)</span>
+
+其中:
+<span class="eq">G_LPF(s) = α/(s+α)</span>    （低通通路）
+<span class="eq">G_HPF(s) = s/(s+α)</span>    （高通通路）
+
+且滿足互補條件:
+<span class="eq">G_LPF(s) + G_HPF(s) = 1</span>
+
+頻率響應特性:
+• 低頻 (ω&lt;&lt;α): 主要信任加速度計（G_LPF≈1, G_HPF≈0）
+• 高頻 (ω&gt;&gt;α): 主要信任陀螺儀（G_LPF≈0, G_HPF≈1）
+• 交叉頻率 ω=α: 兩者權重相等（各 0.5 幅度，-3 dB）
+
+α = 1/τ，τ 為時間常數（通常 0.5~2 秒）
+對應交叉頻率 fc = α/(2π) = 1/(2πτ)（通常 0.1~0.5 Hz）</div>
+
+<h3>時域分析 — 連續時間推導</h3>
+<div class="math-box">由頻域出發，取反拉氏變換:
+<span class="eq">dθ̂/dt = ω_gyro + α·(θ_accel - θ̂)</span>
+<span class="cmt">// 陀螺儀積分預測 + 加速度計誤差修正</span></div>
+
+<h3>時域分析 — 誤差動態</h3>
+<div class="math-box">e(t)=θ_true-θ̂
+假設: ω_gyro=ω_true+b_gyro, θ_accel=θ_true+n_accel
+
+<span class="eq">de/dt + α·e = -b_gyro - α·n_accel</span>
+<span class="cmt">// 誤差以時間常數τ=1/α指數收斂
+// 陀螺儀漂移導致穩態誤差: e_ss=-b_gyro/α
+// 這是一階互補的根本限制！</span></div>
+
+<h3>離散時域遞迴式</h3>
+<div class="math-box"><span class="res">θ̂[n]=θ̂[n-1]+Ts·ω_gyro[n]+γ·(θ_accel[n]-θ̂[n-1]-Ts·ω_gyro[n])</span>
+γ=α·Ts=Ts/(τ+Ts)
+
+等價寫法:
+<span class="res">θ̂[n]=(1-γ)·(θ̂[n-1]+Ts·ω_gyro[n])+γ·θ_accel[n]</span>
+<span class="cmt">// (1-γ)·陀螺儀積分預測 + γ·加速度計修正</span></div>
+</div>
+
+<div class="card">
+<h2>二階互補濾波器（Madgwick / Mahony）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">為了消除陀螺儀漂移，引入漂移估計狀態 b̂(t)。
+從頻域觀點，這相當於在互補濾波器中加入一個積分器，
+形成二階系統，可完全抑制直流（零頻）漂移。
+
+誤差傳遞函數從一階:
+<span class="eq">E(s)/B_gyro(s) = -1/(s+α)</span>
+
+變為二階:
+<span class="eq">E(s)/B_gyro(s) = -s/(s²+Kp·s+Ki)</span>
+
+穩態誤差（終值定理）:
+<span class="eq">e_ss = lim_{s→0} s·[-s/(s²+Kp·s+Ki)]·(b_gyro/s) = 0</span>
+<span class="cmt">// 二階系統對恆定漂移的穩態誤差為零！</span></div>
+
+<h3>時域分析 — PI 控制結構</h3>
+<div class="math-box">狀態擴展: [θ̂(t), b̂(t)]ᵀ
+<span class="eq">dθ̂/dt = ω_gyro - b̂ + Kp·(θ_accel - θ̂)</span>
+<span class="eq">db̂/dt = Ki·(θ_accel - θ̂)</span>
+
+誤差動態特徵方程: s²+Kp·s+Ki=0
+選擇 Kp=2ζωn, Ki=ωn²
+• Mahony: Kp=2·Kp_gain, Ki=Kp_gain²
+• 典型 Kp_gain: 0.5~5.0</div>
+
+<h3>Madgwick 濾波器時域形式</h3>
+<div class="math-box">四元數更新:
+dq/dt=½·q⊗(ω_gyro-b̂)+β·∇f(q,a,m)
+
+db̂/dt=-ζ·(ω_gyro-b̂)×(∇f的角速度誤差分量)
+
+• β: 收斂速率（感測器信任度）
+• ζ: 漂移學習速率
+• ∇f: 加速度計/磁力計測量誤差梯度
+
+<span class="cmt">// 梯度下降優化 + 陀螺儀積分的混合系統</span></div>
+</div>
+</div>
+
+<!-- ==================== EKF ==================== -->
+<div id="kalman" class="tab-content">
+<div class="card">
+<h2>擴展卡爾曼濾波器（EKF）</h2>
+
+<h3>頻域分析</h3>
+<div class="math-box">EKF 本質上是一個<strong>時變線性系統</strong>，其等價頻域特性由當前工作點的線性化決定。
+
+在穩態附近（小擾動假設），EKF 的行為可近似為一個時變濾波器:
+<span class="eq">H_EKF(s,t) ≈ C(t)·[sI-A(t)]⁻¹·B(t) + D(t)</span>
+
+其中 A(t), B(t), C(t), D(t) 由當前狀態的 Jacobian 決定。
+
+與固定係數濾波器（LPF/Notch）的區別:
+• 固定濾波器: H(s) 不隨時間變化，頻率響應固定
+• EKF: 等價 H(s,t) 隨狀態與協方差演化，自適應調整頻率響應
+
+具體而言，卡爾曼增益 Kₖ 決定了等價頻寬:
+• K 大（信任觀測）→ 等價頻寬寬 → 響應快但對雜訊敏感
+• K 小（信任預測）→ 等價頻寬窄 → 響應慢但雜訊免疫
+
+這種「自適應頻寬」是 EKF 相較於固定濾波器的核心優勢:
+飛行平穩時（觀測可靠）自動展寬頻寬，劇烈機動時（觀測雜訊大）自動縮窄頻寬。</div>
+
+<h3>時域分析 — 連續狀態空間</h3>
+<div class="math-box">狀態向量: x(t)=[q₀,q₁,q₂,q₃,b_x,b_y,b_z]ᵀ
+
+<span class="eq">dx(t)/dt = f(x(t),u(t)) + w(t)</span>
+
+四元數運動學:
+dq/dt=½·Ω(ω)·q
+Ω(ω)=[0,-ωx,-ωy,-ωz; ωx,0,ωz,-ωy; ωy,-ωz,0,ωx; ωz,ωy,-ωx,0]
+
+陀螺儀偏差（隨機遊走）:
+db/dt=w_b(t), w_b~N(0,σ_b²)</div>
+
+<h3>時域分析 — 離散狀態空間</h3>
+<div class="math-box"><span class="eq">xₖ=xₖ₋₁+Ts·f(xₖ₋₁,uₖ₋₁)+wₖ₋₁</span>
+<span class="eq">zₖ=h(xₖ)+vₖ</span>
+
+zₖ=[a_x,a_y,a_z,m_x,m_y,m_z]ᵀ: 加速度計+磁力計
+h(xₖ): 姿態→預測重力方向與磁場方向
+vₖ~N(0,R): 觀測雜訊</div>
+
+<h3>時域分析 — 預測步驟</h3>
+<div class="math-box"><span class="eq">x̂ₖ|ₖ₋₁=x̂ₖ₋₁|ₖ₋₁+Ts·f(x̂ₖ₋₁|ₖ₋₁,uₖ₋₁)</span>
+<span class="eq">Pₖ|ₖ₋₁=Fₖ₋₁·Pₖ₋₁|ₖ₋₁·Fₖ₋₁ᵀ+Q</span>
+
+Fₖ₋₁=I+Ts·(∂f/∂x)|_(x̂ₖ₋₁|ₖ₋₁)
+
+<span class="cmt">// 開環積分預測：陀螺儀角速度→姿態積分
+// P因過程雜訊Q而增大（預測不確定性增加）</span></div>
+
+<h3>時域分析 — 更新步驟</h3>
+<div class="math-box">創新（殘差）:
+<span class="eq">ỹₖ=zₖ-h(x̂ₖ|ₖ₋₁)</span>
+
+卡爾曼增益:
+<span class="eq">Kₖ=Pₖ|ₖ₋₁·Hₖᵀ·(Hₖ·Pₖ|ₖ₋₁·Hₖᵀ+R)⁻¹</span>
+
+狀態更新:
+<span class="eq">x̂ₖ|ₖ=x̂ₖ|ₖ₋₁+Kₖ·ỹₖ</span>
+
+協方差更新:
+<span class="eq">Pₖ|ₖ=(I-Kₖ·Hₖ)·Pₖ|ₖ₋₁</span></div>
+
+<h3>時域分析 — 卡爾曼增益極限</h3>
+<div class="math-box">R→0 (觀測極精準): K→H⁺ → 完全信任觀測
+R→∞ (觀測極雜訊): K→0 → 完全忽略觀測（純開環）
+P→∞ (預測極不確定): K→H⁺ → 依賴觀測
+
+<span class="res">EKF自動實現「預測-觀測」信任權衡，無需手動調整增益</span></div>
+
+<div class="note ok">
+時域優勢：EKF同時估計姿態和陀螺儀漂移，通過P矩陣演化自適應調整K增益。無GPS時P增大自動降低預測信任；GPS恢復時大創新ỹ通過K快速修正累積誤差。
+</div>
+</div>
+
+<div class="card">
+<h2>EKF 時域數值範例</h2>
+<div class="param-grid">
+<div class="param-card"><h4>過程雜訊 Q</h4><p>σ_ω=0.01 rad/s/√Hz<br>σ_b=0.001 rad/s²/√Hz<br>Q=diag(σ_ω²×3,σ_b²×3)</p></div>
+<div class="param-card"><h4>觀測雜訊 R</h4><p>σ_a=0.05 m/s²<br>σ_m=0.1 μT<br>R=diag(σ_a²×3,σ_m²×3)</p></div>
+<div class="param-card"><h4>時域響應</h4><p>姿態收斂: ~0.1~0.5s<br>漂移收斂: ~5~20s<br>GPS位置: ~1~3s</p></div>
+<div class="param-card"><h4>計算負載</h4><p>n=16（含位置/速度）<br>每步O(n³)≈4096 FLOP<br>1kHz下~4 MFLOPS</p></div>
+</div>
+</div>
+</div>
+
+<!-- ==================== Betaflight 應用 ==================== -->
+<div id="betaflight" class="tab-content">
+<div class="card">
+<h2>Betaflight 濾波器架構總覽</h2>
+<p>Betaflight 中所有濾波器最終都轉化為時域的差分方程，在 8kHz（陀螺儀）和 2kHz（PID 迴路）取樣率下即時執行：</p>
+<div class="step-flow">
+<div class="step-box">IMU原始數據<br><small>8kHz中斷</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">硬體LPF<br><small>260Hz類比</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">軟體Gyro LPF<br><small>PT1/PT2差分方程</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">Notch Filter<br><small>BiQuad遞迴</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">D-term LPF<br><small>PT1差分方程</small></div>
+<span class="step-arrow">→</span>
+<div class="step-box">PID控制器<br><small>2kHz中斷</small></div>
+</div>
+</div>
+
+<div class="card">
+<h2>核心 C 語言時域實現</h2>
+
+<h3>1. PT1 濾波器 — 時域遞迴</h3>
+<div class="code-block"><span class="kw">typedef</span> <span class="kw">struct</span> {
+    <span class="type">float</span> k;       <span class="cmt">// α = Ts/(τ+Ts)</span>
+    <span class="type">float</span> state;   <span class="cmt">// y[n-1]</span>
+} pt1Filter_t;
+
+<span class="type">float</span> <span class="kw">pt1FilterApply</span>(pt1Filter_t *f, <span class="type">float</span> input) {
+    <span class="cmt">// y[n] = α·x[n] + (1-α)·y[n-1]</span>
+    <span class="cmt">// 等價增量形式（更數值穩定）:</span>
+    f->state = f->state + f->k * (input - f->state);
+    <span class="kw">return</span> f->state;
+}
+
+<span class="type">void</span> <span class="kw">pt1FilterInit</span>(pt1Filter_t *f, <span class="type">float</span> fc, <span class="type">float</span> fs) {
+    <span class="type">float</span> rc = <span class="num">1.0f</span> / (<span class="num">2.0f</span> * M_PIf * fc);
+    <span class="type">float</span> dt = <span class="num">1.0f</span> / fs;
+    f->k = dt / (rc + dt);   <span class="cmt">// α = Ts/(τ+Ts)</span>
+    f->state = <span class="num">0.0f</span>;
+}</div>
+
+<h3>2. BiQuad 濾波器 — 時域遞迴</h3>
+<div class="code-block"><span class="kw">typedef</span> <span class="kw">struct</span> {
+    <span class="type">float</span> b0, b1, b2;  <span class="cmt">// 分子係數</span>
+    <span class="type">float</span> a1, a2;      <span class="cmt">// 分母係數（a0=1）</span>
+    <span class="type">float</span> x1, x2;      <span class="cmt">// x[n-1], x[n-2]</span>
+    <span class="type">float</span> y1, y2;      <span class="cmt">// y[n-1], y[n-2]</span>
+} biquadFilter_t;
+
+<span class="type">float</span> <span class="kw">biquadFilterApply</span>(biquadFilter_t *f, <span class="type">float</span> input) {
+    <span class="type">float</span> result = f->b0*input + f->b1*f->x1 + f->b2*f->x2
+                   - f->a1*f->y1 - f->a2*f->y2;
+    f->x2 = f->x1;  f->x1 = input;
+    f->y2 = f->y1;  f->y1 = result;
+    <span class="kw">return</span> result;
+}
+<span class="cmt">// 直接對應: y[n]=b0·x[n]+b1·x[n-1]+b2·x[n-2]-a1·y[n-1]-a2·y[n-2]</span></div>
+
+<h3>3. 陷波濾波器係數計算</h3>
+<div class="code-block"><span class="type">void</span> <span class="kw">biquadFilterInitNotch</span>(biquadFilter_t *f, <span class="type">float</span> fs,
+                              <span class="type">float</span> f0, <span class="type">float</span> Q) {
+    <span class="type">float</span> K = tanf(M_PIf * f0 / fs);
+    <span class="type">float</span> K2 = K * K;
+    <span class="type">float</span> invD = <span class="num">1.0f</span> / (<span class="num">1.0f</span> + K / Q + K2);
+    f->b0 = (<span class="num">1.0f</span> + K2) * invD;
+    f->b1 = <span class="num">2.0f</span> * (K2 - <span class="num">1.0f</span>) * invD;
+    f->b2 = f->b0;           <span class="cmt">// 陷波對稱性: b0=b2</span>
+    f->a1 = f->b1;           <span class="cmt">// a1 = b1</span>
+    f->a2 = (<span class="num">1.0f</span> - K/Q + K2) * invD;
+    f->x1 = f->x2 = f->y1 = f->y2 = <span class="num">0.0f</span>;
+}
+<span class="cmt">// 雙線性變換: s=(2/Ts)·(1-z⁻¹)/(1+z⁻¹) 的實現</span></div>
+</div>
+
+<div class="card">
+<h2>核心 CLI 參數與數學對應</h2>
+
+<h3>陀螺儀低通濾波器（Gyro LPF）</h3>
+<div class="param-grid">
+<div class="param-card"><h4>gyro_lpf1_type</h4><p>濾波器類型<br>PT1=一階 | PT2=二階級聯 | BIQUAD=標準二階</p></div>
+<div class="param-card"><h4>gyro_lpf1_static_hz</h4><p>靜態截止頻率 fc<br>典型值: 150~250 Hz<br>對應: H(s)=ωc/(s+ωc) 中 ωc=2π·fc</p></div>
+<div class="param-card"><h4>gyro_lpf1_dyn_min_hz / max_hz</h4><p>動態截止頻率範圍<br>依據油門/轉速自動調整 fc<br>油門高→fc提高（允許更多高頻）</p></div>
+</div>
+
+<h3>陷波濾波器（Notch Filter）</h3>
+<div class="param-grid">
+<div class="param-card"><h4>gyro_notch1_hz</h4><p>中心頻率 f₀<br>對應: H(s)=(s²+ω₀²)/(s²+ω₀s/Q+ω₀²)</p></div>
+<div class="param-card"><h4>gyro_notch1_cutoff</h4><p>截止頻率 = f₀ - bandwidth/2<br>帶寬 BW = 2·(f₀ - cutoff)<br>Q = f₀ / BW</p></div>
+<div class="param-card"><h4>dyn_notch_count / dyn_notch_q</h4><p>動態陷波數量與 Q 值<br>典型: count=2, Q=120（寬 Q）<br>或 Q=250（窄 Q，Betaflight 4.3+）</p></div>
+</div>
+
+<h3>D-term 濾波器</h3>
+<div class="param-grid">
+<div class="param-card"><h4>dterm_lpf1_type / dterm_lpf1_static_hz</h4><p>D項微分訊號極易放大高頻雜訊<br>必須經過強力低通濾波<br>典型 fc: 50~150 Hz</p></div>
+<div class="param-card"><h4>dterm_notch_hz</h4><p>專門針對 D 項共振頻率<br>若馬達共振在 300Hz，D-notch 可設 300Hz</p></div>
+</div>
+</div>
+
+<div class="card">
+<h2>實務配置範例（5吋競速機）</h2>
+<p>以下為典型的 Betaflight 4.4+ 濾波器配置，適用於 5 吋 FPV 競速無人機（2306 馬達 + 5 吋三葉槳）：</p>
+<div class="math-box" style="color:#c4b5fd;"># === 陀螺儀濾波 ===
+set gyro_lpf1_type = PT2
+set gyro_lpf1_static_hz = 250
+set gyro_lpf2_type = PT1
+set gyro_lpf2_static_hz = 500
+
+# === 動態陷波濾波器 ===
+set dyn_notch_count = 2
+set dyn_notch_q = 120
+set dyn_notch_min_hz = 100
+set dyn_notch_max_hz = 600
+
+# === D-term 濾波 ===
+set dterm_lpf1_type = PT1
+set dterm_lpf1_static_hz = 100
+set dterm_lpf2_type = PT1
+set dterm_lpf2_static_hz = 200
+
+# === 馬達濾波（RPM Filter）===
+set dshot_bidir = ON
+set rpm_filter_harmonics = 3
+set rpm_filter_min_hz = 20
+set rpm_filter_fade_range_hz = 50</div>
+<div class="note">
+參數調整原則：<br>
+1. 先用 Blackbox 記錄陀螺儀原始數據，FFT 分析找出共振峰<br>
+2. 設置 Notch Filter 對準共振頻率<br>
+3. LPF 截止頻率盡量設高（減少相位延遲），但必須確保共振峰被衰減至安全範圍<br>
+4. D-term LPF 通常比 Gyro LPF 更嚴格，因為微分運算會放大高頻
+</div>
+</div>
+
+<div class="card">
+<h2>RPM 濾波器原理（DShot 雙向通訊）</h2>
+<p>Betaflight 4.0+ 支援 DShot 雙向協議，ESC 回傳每個馬達的即時轉速（eRPM）。RPM 濾波器為每個馬達建立獨立的動態陷波：</p>
+<div class="math-box">f_notch_i(t) = eRPM_i(t) / (60 × N_poles) × k_harmonic
+
+其中:
+• eRPM_i: 第 i 個馬達的電子轉速（DShot 回傳）
+• N_poles: 馬達磁極對數（通常 7 對 = 14 極）
+• k_harmonic: 諧波次數（1, 2, 3...）
+
+每個馬達產生 3 個諧波陷波 × 4 個馬達 = 最多 12 個動態陷波濾波器
+
+時域行為:
+<span class="cmt">// 每個取樣週期根據最新 eRPM 重新計算 BiQuad 係數
+// 係數更新速率與 DShot 回傳速率一致（通常與 PID 迴路同頻）
+// 馬達轉速變化時，陷波中心頻率平滑跟隨</span></div>
+<div class="note ok">
+優勢：RPM Filter 只衰減與馬達轉速相關的窄帶噪音，對其他頻率幾乎無影響。相比傳統寬帶 LPF，相位延遲顯著降低，飛行手感更「跟手」。
+</div>
+</div>
+
+<div class="card">
+<h2>濾波器對 PID 控制的時域影響</h2>
+<table>
+<tr><th>濾波器參數</th><th>相位延遲</th><th>時域響應</th><th>風險</th></tr>
+<tr><td>Gyro LPF &lt;150Hz</td><td>大 (~2ms)</td><td>階躍響應遲鈍</td><td>高頻振盪風險低</td></tr>
+<tr><td>Gyro LPF &gt;500Hz</td><td>小 (~0.3ms)</td><td>階躍響應靈敏</td><td>可能放大共振</td></tr>
+<tr><td>Notch Q &gt;300</td><td>大 (~5ms)</td><td>脈衝響應長尾</td><td>可能引發振盪</td></tr>
+<tr><td>D-term LPF &lt;50Hz</td><td>極大 (~6ms)</td><td>D 項幾乎無效</td><td>微分控制失效</td></tr>
+<tr><td>無 RPM Filter</td><td>中 (~1ms)</td><td>需較低 Gyro LPF</td><td>整體延遲較大</td></tr>
+<tr><td>啟用 RPM Filter</td><td>極小 (~0.1ms)</td><td>可大幅提高 LPF</td><td>需 DShot 雙向支援</td></tr>
+</table>
+</div>
+</div>
+
+<div class="footer">
+<p>濾波器種類與四軸無人機飛控應用 — 碩士班授課教材</p>
+<p>內容涵蓋：頻域分析、時域分析、現代飛控系統、Betaflight 實務</p>
+</div>
+</div>
+
+<script>
+function switchTab(tabId){
+  document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
