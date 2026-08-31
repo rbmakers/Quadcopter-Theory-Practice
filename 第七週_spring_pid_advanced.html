@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>控制反應頻率對比實驗台 (終極教材版)</title>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; text-align: center; background: #eaedf1; margin: 0; padding: 20px; color: #2c3e50; }
+        h2 { margin-bottom: 5px; color: #1a252f; }
+        p { color: #7f8c8d; margin-top: 0; font-size: 14px; }
+        .main-container { display: flex; justify-content: center; align-items: flex-start; gap: 20px; max-width: 1150px; margin: 0 auto; }
+        canvas { background: #ffffff; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .panel { background: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left; width: 340px; }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; color: #34495e; }
+        .slider-row { display: flex; align-items: center; gap: 10px; }
+        input[type="range"] { flex-grow: 1; accent-color: #e74c3c; }
+        .freq-slider { accent-color: #27ae60 !important; } /* 頻率滑桿用綠色突顯 */
+        .val-disp { width: 55px; font-weight: bold; font-family: monospace; text-align: right; color: #2980b9; }
+        .freq-disp { color: #27ae60; }
+        .btn { width: 100%; padding: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 5px; transition: 0.1s; }
+        .btn-disturb { background: #e67e22; color: white; }
+        .btn-disturb:hover { background: #d35400; }
+        .btn-reset { background: #95a5a6; color: white; margin-top: 8px; }
+        .btn-reset:hover { background: #7f8c8d; }
+        .highlight-box { background: #ebf5fb; padding: 10px; border-radius: 5px; border-left: 4px solid #27ae60; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <h2>單軸治具：反應頻率 vs. Kp 臨界穩定度實驗室</h2>
+    <p>核心教學主題：親眼見證「反應頻率提高時，系統對大 Kp 的承受力如何呈平方倍數暴增」</p>
+
+    <div class="main-container">
+        <div>
+            <canvas id="simCanvas" width="680" height="250"></canvas>
+            <div style="margin-top: 10px;"></div>
+            <canvas id="plotCanvas" width="680" height="190"></canvas>
+        </div>
+
+        <div class="panel">
+            
+            <div class="control-group highlight-box">
+                <label style="color: #27ae60; font-size: 15px;">控制反應頻率 (Loop Frequency):</label>
+                <div class="slider-row">
+                    <input type="range" id="freqSlider" class="freq-slider" min="50" max="1000" step="50" value="50">
+                    <span id="freqVal" class="val-disp freq-disp">50 Hz</span>
+                </div>
+                <small style="color: #7f8c8d; display:block; margin-top:4px;">模擬 RP2350 每秒執行幾次 PID 計算</small>
+            </div>
+
+            <div class="control-group">
+                <label>目標角度 (Target Angle):</label>
+                <div class="slider-row">
+                    <input type="range" id="targetSlider" min="-45" max="45" step="1" value="0">
+                    <span id="targetVal" class="val-disp">0°</span>
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 12px 0;">
+            
+            <div class="control-group">
+                <label>比例增益 Kp <span style="font-weight:normal; color:#7f8c8d;">(彈簧剛度)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kpSlider" min="0.5" max="30.0" step="0.5" value="6.0">
+                    <span id="kpVal" class="val-disp">6.0</span>
+                </div>
+                <small style="color: #c0392b; display:block; margin-top:2px;">⚠️ 注意：低頻率下開大 Kp 會立刻導致發散！</small>
+            </div>
+
+            <div class="control-group">
+                <label>積分增益 Ki <span style="font-weight:normal; color:#7f8c8d;">(消除不平衡)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kiSlider" min="0.0" max="4.0" step="0.1" value="0.0">
+                    <span id="kiVal" class="val-disp">0.0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>微分增益 Kd <span style="font-weight:normal; color:#7f8c8d;">(物理阻尼)</span>:</label>
+                <div class="slider-row">
+                    <input type="range" id="kdSlider" min="0.0" max="1.5" step="0.05" value="0.0">
+                    <span id="kdVal" class="val-disp">0.00</span>
+                </div>
+            </div>
+
+            <button class="btn btn-disturb" onclick="giveDisturb()">手動撥動管子 (脈衝干擾)</button>
+            <button class="btn btn-reset" onclick="resetSystem()">重置姿態</button>
+        </div>
+    </div>
+
+    <script>
+        const simCanvas = document.getElementById('simCanvas');
+        const ctxSim = simCanvas.getContext('2d');
+        const plotCanvas = document.getElementById('plotCanvas');
+        const ctxPlot = plotCanvas.getContext('2d');
+
+        // --- 物理系統參數 ---
+        let theta = 0.3;          // 當前角度 (rad)
+        let omega = 0.0;          // 當前角速度 (rad/s)
+        let J = 0.025;            // 轉動慣量 (kg·m²)
+        let base_b = 0.005;       // 微小自然阻尼
+
+        // --- PID 控制核心變數 ---
+        let control_freq = 50;    // 預設控制頻率 50Hz
+        let Kp = 6.0;
+        let Ki = 0.0;
+        let Kd = 0.0;
+        let target_deg = 0.0;
+        let integral = 0.0;
+        let last_error = 0.0;
+
+        // 當前控制器的離散輸出保持量
+        let current_control_torque = 0.0;
+
+        // 示波器歷史
+        let historyLength = 220;
+        let targetHistory = new Array(historyLength).fill(0);
+        let thetaHistory = new Array(historyLength).fill(0);
+
+        // --- UI 事件處理 ---
+        document.getElementById('freqSlider').oninput = function() { control_freq = parseInt(this.value); document.getElementById('freqVal').innerText = this.value + " Hz"; }
+        document.getElementById('targetSlider').oninput = function() { target_deg = parseFloat(this.value); document.getElementById('targetVal').innerText = this.value + "°"; }
+        document.getElementById('kpSlider').oninput = function() { Kp = parseFloat(this.value); document.getElementById('kpVal').innerText = Kp.toFixed(1); }
+        document.getElementById('kiSlider').oninput = function() { Ki = parseFloat(this.value); document.getElementById('kiVal').innerText = Ki.toFixed(1); }
+        document.getElementById('kdSlider').oninput = function() { Kd = parseFloat(this.value); document.getElementById('kdVal').innerText = Kd.toFixed(2); }
+
+        function giveDisturb() { omega = -4.0; }
+        function resetSystem() { theta = 0.4; omega = 0; integral = 0; last_error = 0; current_control_torque = 0; }
+        simCanvas.addEventListener('mousedown', () => { giveDisturb(); });
+
+        // ========================================================
+        // 【控制學核心】獨立的時間同步機制
+        // ========================================================
+        let last_time = performance.now();
+        let control_accumulator = 0.0;
+
+        function animationLoop(timestamp) {
+            let elapsed = (timestamp - last_time) / 1000; // 實際經過的物理時間 (秒)
+            last_time = timestamp;
+
+            // 防止背景標籤頁恢復時的大突波
+            if (elapsed > 0.1) elapsed = 0.1;
+
+            // 累加時間，用來判斷何時該執行離散 PID 計算
+            control_accumulator += elapsed;
+            let control_dt = 1 / control_freq;
+
+            // 當累積時間超過了控制器的更新週期，就執行一次 PID 更新（可能在一個繪圖幀內更新多次或不更新）
+            while (control_accumulator >= control_dt) {
+                // --- 離散時間點 PID 計算 ---
+                let target_rad = target_deg * Math.PI / 180;
+                let error = target_rad - theta;
+
+                let p_term = Kp * error;
+
+                integral += error * control_dt;
+                integral = Math.max(Math.min(integral, 2.0), -2.0); // Anti-windup
+                let i_term = Ki * integral;
+
+                // 微分項：使用標準離散後向差分 (de = (e - last_e)/dt)
+                let d_term = Kd * ((error - last_error) / control_dt);
+                last_error = error;
+
+                // 更新馬達控制力矩（此力矩會一直保持不變，直到下一個控制週期到來）
+                current_control_torque = p_term + i_term + d_term;
+
+                control_accumulator -= control_dt;
+            }
+
+            // --- 連續物理世界運算 (以 60fps 幀率細分積分) ---
+            // 治具在這一瞬間受到的總力矩
+            let total_torque = current_control_torque - (base_b * omega);
+            let alpha = total_torque / J;
+            
+            omega += alpha * elapsed;
+            theta += omega * elapsed;
+
+            // --- 示波器繪圖紀錄 ---
+            targetHistory.push(target_deg); targetHistory.shift();
+            thetaHistory.push(theta * 180 / Math.PI); thetaHistory.shift();
+
+            // --- 渲染畫面 ---
+            drawSimulation();
+            drawPlotter();
+
+            requestAnimationFrame(animationLoop);
+        }
+
+        // ========================================================
+        // 畫布渲染功能 (與前版相似，優化比例)
+        // ========================================================
+        function drawSimulation() {
+            ctxSim.clearRect(0, 0, simCanvas.width, simCanvas.height);
+            
+            // 目標虛線
+            ctxSim.save();
+            ctxSim.translate(simCanvas.width / 2, simCanvas.height / 2 - 15);
+            ctxSim.rotate(target_deg * Math.PI / 180);
+            ctxSim.strokeStyle = '#e74c3c'; ctxSim.setLineDash([4, 4]);
+            ctxSim.beginPath(); ctxSim.moveTo(-300, 0); ctxSim.lineTo(300, 0); ctxSim.stroke();
+            ctxSim.restore();
+
+            // 旋轉機臂
+            ctxSim.save();
+            ctxSim.translate(simCanvas.width / 2, simCanvas.height / 2 - 15);
+            ctxSim.rotate(theta);
+            ctxSim.strokeStyle = '#34495e'; ctxSim.lineWidth = 10; ctxSim.lineCap = 'round';
+            ctxSim.beginPath(); ctxSim.moveTo(-250, 0); ctxSim.lineTo(250, 0); ctxSim.stroke();
+            // 兩側馬達
+            ctxSim.fillStyle = '#e74c3c'; ctxSim.fillRect(-260, -12, 10, 24);
+            ctxSim.fillStyle = '#3498db'; ctxSim.fillRect(250, -12, 10, 24);
+            ctxSim.restore();
+
+            // 軸心
+            ctxSim.fillStyle = '#1abc9c';
+            ctxSim.beginPath(); ctxSim.arc(simCanvas.width / 2, simCanvas.height / 2 - 15, 12, 0, Math.PI * 2); ctxSim.fill();
+
+            // 三角底座
+            ctxSim.strokeStyle = '#bdc3c7'; ctxSim.lineWidth = 4;
+            ctxSim.beginPath(); ctxSim.moveTo(simCanvas.width/2, simCanvas.height/2);
+            ctxSim.lineTo(simCanvas.width/2 - 25, simCanvas.height - 10);
+            ctxSim.lineTo(simCanvas.width/2 + 25, simCanvas.height - 10);
+            ctxSim.closePath(); ctxSim.stroke();
+        }
+
+        function drawPlotter() {
+            ctxPlot.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
+            ctxPlot.strokeStyle = '#f5f5f5'; ctxPlot.lineWidth = 1;
+            for(let i=0; i<plotCanvas.height; i+=30) {
+                ctxPlot.beginPath(); ctxPlot.moveTo(0, i); ctxPlot.lineTo(plotCanvas.width, i); ctxPlot.stroke();
+            }
+            ctxPlot.strokeStyle = '#d5dbdb';
+            ctxPlot.beginPath(); ctxPlot.moveTo(0, plotCanvas.height/2); ctxPlot.lineTo(plotCanvas.width, plotCanvas.height/2); ctxPlot.stroke();
+
+            function mapY(val) { return plotCanvas.height / 2 - (val * (plotCanvas.height / 120)); }
+            let stepX = plotCanvas.width / (historyLength - 1);
+
+            // 目標線
+            ctxPlot.strokeStyle = '#e74c3c'; ctxPlot.lineWidth = 1.5; ctxPlot.beginPath();
+            ctxPlot.moveTo(0, mapY(targetHistory[0]));
+            for(let i=1; i<historyLength; i++) ctxPlot.lineTo(i * stepX, mapY(targetHistory[i]));
+            ctxPlot.stroke();
+
+            // 姿態線
+            ctxPlot.strokeStyle = '#27ae60'; ctxPlot.lineWidth = 2; ctxPlot.beginPath();
+            ctxPlot.moveTo(0, mapY(thetaHistory[0]));
+            for(let i=1; i<historyLength; i++) ctxPlot.lineTo(i * stepX, mapY(thetaHistory[i]));
+            ctxPlot.stroke();
+
+            ctxPlot.fillStyle = '#34495e'; ctxPlot.font = "bold 11px sans-serif";
+            ctxPlot.fillText("綠線: Pitch 角度", 15, 20);
+            ctxPlot.fillText("紅線: Target 目標", 120, 20);
+        }
+
+        // 啟動模擬
+        requestAnimationFrame(animationLoop);
+    </script>
+</body>
+</html>
