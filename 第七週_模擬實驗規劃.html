@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第七週 PID 調校與模擬判讀 — 完整實驗規劃(校正版)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f7fa; --bg-card:#ffffff; --bg-code:#edf0f5; --bg-soft:#eef1f6;
+  --ink:#13233d; --ink-soft:#51617a; --ink-faint:#8493a8;
+  --border:#e1e6ee; --border-strong:#c9d2e0;
+  --a:#1c7a52; --a-bg:#e7f5ee;
+  --b:#9a6103; --b-bg:#fbf0dd;
+  --c:#1f5fa8; --c-bg:#e9f1fb;
+  --warn:#b3261e; --warn-bg:#fbe9e8;
+  --mod:#8a5a00; --mod-bg:#fbf1de;
+  --new:#0e7c72; --new-bg:#e3f5f2;
+  --shadow: 0 1px 2px rgba(20,30,50,.04), 0 6px 20px rgba(20,30,50,.06);
+}
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark){
+    --bg:#0b0f17; --bg-card:#121926; --bg-code:#0d1420; --bg-soft:#0f1622;
+    --ink:#e6ebf3; --ink-soft:#a7b3c6; --ink-faint:#6d7a90;
+    --border:#232c3d; --border-strong:#31405a;
+    --a:#3fcf95; --a-bg:#0f2a20;
+    --b:#e5b155; --b-bg:#2a2110;
+    --c:#7db3ee; --c-bg:#0f2438;
+    --warn:#f0817a; --warn-bg:#2c1414;
+    --mod:#e9c069; --mod-bg:#2a2110;
+    --new:#5fd1c5; --new-bg:#0e2723;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0f17; --bg-card:#121926; --bg-code:#0d1420; --bg-soft:#0f1622;
+  --ink:#e6ebf3; --ink-soft:#a7b3c6; --ink-faint:#6d7a90;
+  --border:#232c3d; --border-strong:#31405a;
+  --a:#3fcf95; --a-bg:#0f2a20;
+  --b:#e5b155; --b-bg:#2a2110;
+  --c:#7db3ee; --c-bg:#0f2438;
+  --warn:#f0817a; --warn-bg:#2c1414;
+  --mod:#e9c069; --mod-bg:#2a2110;
+  --new:#5fd1c5; --new-bg:#0e2723;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Noto Sans TC','Noto Sans',system-ui,sans-serif;
+  line-height:1.75; font-size:15.5px;
+}
+h1,h2,h3,h4{font-family:'Noto Serif TC','Noto Serif',serif; color:var(--ink); line-height:1.4; font-weight:700}
+code, .mono, .eq, .badge, table{font-family:'IBM Plex Mono',ui-monospace,'Courier New',monospace}
+
+/* ── Top bar ── */
+header.top{
+  position:sticky; top:0; z-index:50;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);
+}
+.top-inner{max-width:920px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.top-title{font-family:'Noto Serif TC',serif;font-weight:700;font-size:15px;color:var(--ink);white-space:nowrap}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap}
+nav.tabs a{
+  font-size:13px; color:var(--ink-soft); text-decoration:none; padding:6px 10px;
+  border-radius:7px; transition:background .15s, color .15s;
+}
+nav.tabs a:hover{background:var(--bg-soft); color:var(--ink)}
+
+/* ── Layout ── */
+main{max-width:920px;margin:0 auto;padding:8px 20px 90px}
+section{padding:44px 0; border-bottom:1px solid var(--border)}
+section:last-of-type{border-bottom:none}
+section > h2{font-size:26px; margin:0 0 6px}
+.section-sub{color:var(--ink-faint); font-size:13.5px; margin:0 0 28px}
+
+/* ── Hero ── */
+.hero{padding:56px 0 40px}
+.hero h1{font-size:32px; margin:0 0 14px; max-width:16ch}
+.hero p{color:var(--ink-soft); font-size:16px; max-width:56ch; margin:0 0 22px}
+.hero-meta{display:flex; gap:10px; flex-wrap:wrap}
+.pill{font-size:12.5px; padding:5px 12px; border-radius:99px; border:1px solid var(--border-strong); color:var(--ink-soft)}
+
+/* ── Cards / tables ── */
+.card{background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px 22px; box-shadow:var(--shadow); margin:18px 0}
+.tbl-wrap{overflow-x:auto; margin:16px 0; border:1px solid var(--border); border-radius:10px}
+table{width:100%; border-collapse:collapse; font-size:13px; min-width:480px}
+th,td{padding:9px 12px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top}
+th{background:var(--bg-soft); font-weight:600; color:var(--ink-soft); font-size:12px}
+tr:last-child td{border-bottom:none}
+
+/* ── Equation block ── */
+.eq{
+  background:var(--bg-code); border-radius:10px; padding:16px 18px; margin:14px 0;
+  font-size:15px; text-align:center; color:var(--ink); overflow-x:auto; letter-spacing:.2px;
+}
+.eq .line{margin:4px 0}
+.eq-note{font-size:12px; color:var(--ink-faint); margin-top:8px; text-align:left; line-height:1.65}
+
+/* ── Badges ── */
+.badge{display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:5px; letter-spacing:.3px}
+.b-keep{background:var(--bg-soft); color:var(--ink-faint)}
+.b-mod{background:var(--mod-bg); color:var(--mod)}
+.b-warn{background:var(--warn-bg); color:var(--warn)}
+.b-new{background:var(--new-bg); color:var(--new)}
+
+/* ── Callouts ── */
+.callout{border-left:3px solid var(--border-strong); background:var(--bg-soft); border-radius:0 8px 8px 0; padding:12px 16px; margin:14px 0; font-size:13.5px; color:var(--ink-soft)}
+.callout.warn{border-color:var(--warn); background:var(--warn-bg); color:var(--ink)}
+.callout.mod{border-color:var(--mod); background:var(--mod-bg); color:var(--ink)}
+.callout.new{border-color:var(--new); background:var(--new-bg); color:var(--ink)}
+
+/* ── Experiment accent bands ── */
+#expA h2, #expA h3{color:var(--a)}
+#expA .accent-bar{background:var(--a)}
+#expB h2, #expB h3{color:var(--b)}
+#expB .accent-bar{background:var(--b)}
+#expC h2, #expC h3{color:var(--c)}
+#expC .accent-bar{background:var(--c)}
+.accent-bar{width:40px;height:4px;border-radius:2px;margin-bottom:14px}
+
+/* ── Details / theory-only ── */
+details{background:var(--bg-card); border:1px solid var(--border); border-radius:10px; margin:12px 0; overflow:hidden}
+details summary{cursor:pointer; padding:12px 16px; font-size:13.5px; font-weight:600; list-style:none; display:flex; align-items:center; gap:8px; color:var(--ink-soft)}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"▸"; font-size:11px; color:var(--ink-faint); transition:transform .15s}
+details[open] summary::before{transform:rotate(90deg)}
+details .body{padding:0 16px 16px; font-size:13.5px; color:var(--ink-soft)}
+
+/* ── Op list ── */
+.op-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; margin:14px 0}
+.op-item{background:var(--bg-soft); border-radius:9px; padding:11px 13px; font-size:13px}
+.op-item .k{font-weight:600; color:var(--ink); display:block; margin-bottom:3px}
+.op-item .v{color:var(--ink-soft); font-size:12.5px}
+
+/* ── Footer ── */
+footer{max-width:920px;margin:0 auto;padding:30px 20px 60px;color:var(--ink-faint);font-size:12px;border-top:1px solid var(--border)}
+
+/* ── responsive ── */
+@media (max-width:680px){
+  .hero h1{font-size:26px}
+  nav.tabs{gap:2px}
+  nav.tabs a{padding:5px 8px; font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <span class="top-title">第七週・PID 調校與模擬判讀</span>
+    <nav class="tabs">
+      <a href="#overview">總覽</a>
+      <a href="#basics">共同基礎</a>
+      <a href="#expA">實驗 A</a>
+      <a href="#expB">實驗 B</a>
+      <a href="#expC">實驗 C</a>
+      <a href="#homework">作業</a>
+      <a href="#appendix">附錄</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero" id="overview">
+    <h1>PID 調校與模擬判讀</h1>
+    <p>碩士班一年級・單軸控制、串級控制與三軸姿態。本版依三支實際模擬器(<code>spring_pid_simulation.html</code>、<code>spring_dual_pid_simulation.html</code>、<code>cascaded_pid_3d.html</code>)逐項校正過,標記哪些任務可以直接操作、哪些需要換算、哪些目前做不到。</p>
+    <div class="hero-meta">
+      <span class="pill">總時長 150 分鐘</span>
+      <span class="pill">基礎 20 ・ 實驗A 30 ・ 實驗B 35 ・ 實驗C 45 ・ 討論 20</span>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px">學習目標</h3>
+      <ul>
+        <li>建立力矩、角速度與角度之間的模型,由閉迴路分母推導自然頻率 ω<sub>n</sub>、阻尼比 ζ 及增益的影響。</li>
+        <li>三個實驗共用同一流程:原理複習 → 提出預測 → 單變量調校 → 解釋觀察結果。</li>
+        <li>實驗 A(單軸角度)→ 實驗 B(串級角度/角速度)→ 實驗 C(三軸姿態 + 頻域分析),難度與抽象程度依序疊加。</li>
+      </ul>
+      <div class="callout new"><span class="badge b-new">新增</span>&nbsp; 實驗 C 現在有對應模擬器,原本 45 分鐘的規劃可以照常執行 — 唯一建議是把 25/26/31/32 頁的理論選讀移出電腦操作時段,省下的時間拿去做 Bode 對照 ρ(局部穩定度)的新任務(見實驗 C)。</div>
+    </div>
+  </section>
+
+  <section id="basics">
+    <h2>共同基礎</h2>
+    <p class="section-sub">三個實驗共用的物理量、模型假設與評分方式,三支模擬器都遵守下列約定。</p>
+
+    <h3 style="font-size:15px">物理量與單位</h3>
+    <div class="eq">
+      <div class="line">ω = θ̇ ,&nbsp;&nbsp; e = r − θ ,&nbsp;&nbsp; θ<sub>rad</sub> = θ<sub>deg</sub>·π/180</div>
+      <div class="eq-note">θ:姿態角 [rad];ω:角速度 [rad/s];τ:控制力矩 [N·m];J:轉動慣量 [kg·m²];b:黏滯阻尼 [N·m·s/rad]。介面一律用度數輸入,計算一律用弧度;增益需隨輸入/輸出單位解讀。</div>
+    </div>
+
+    <h3 style="font-size:15px">共同模型</h3>
+    <div class="eq">
+      <div class="line">J·θ̈ + b·θ̇ = τ + d<sub>τ</sub></div>
+      <div class="line">G<sub>θ</sub>(s) = 1 / (Js² + bs) ,&nbsp;&nbsp; G<sub>ω</sub>(s) = 1 / (Js + b)</div>
+      <div class="eq-note">固定軸剛體近似,慣量固定,阻尼與角速度成正比;角度/角速度直接取自模擬狀態,無量測雜訊。三支模擬器都是這個模型的離散實作,差異只在控制律的複雜度(單環 → 串級 → 三軸串級 + 頻域分析)。</div>
+    </div>
+
+    <h3 style="font-size:15px">性能指標</h3>
+    <div class="eq">
+      <div class="line">M<sub>p</sub> = (θ<sub>max</sub> − r) / |r − θ(0)| × 100%</div>
+      <div class="line">|θ(t) − r| ≤ 0.02|r − θ(0)| , ∀t ≥ t<sub>s</sub></div>
+      <div class="eq-note">M<sub>p</sub>:超越量;t<sub>s</sub>:2% 整定時間 — 從此刻起「一直」留在誤差帶內,不是只首次進入。</div>
+    </div>
+
+    <details>
+      <summary>閉迴路二階標準式(三個實驗都會用到)</summary>
+      <div class="body">
+        <div class="eq" style="margin-top:0">
+          <div class="line">D(s)/a₂ = s² + 2ζω<sub>n</sub>s + ω<sub>n</sub>²</div>
+          <div class="line">ω<sub>n</sub> = √(a₀/a₂) ,&nbsp;&nbsp; ζ = a₁ / (2√(a₂a₀))</div>
+        </div>
+        分子零點與增益不影響 ω<sub>n</sub>、ζ,但會影響追蹤波形與超越量,不能只看分母。
+      </div>
+    </details>
+  </section>
+
+  <!-- ═══════════════════════ 實驗 A ═══════════════════════ -->
+  <section id="expA">
+    <div class="accent-bar"></div>
+    <h2>實驗 A・單軸角度 PID</h2>
+    <p class="section-sub">對應 <code>spring_pid_simulation.html</code>。程式碼常數與本頁例題數字完全一致,規劃可直接照做。<span class="badge b-keep" style="margin-left:6px">整體保留</span></p>
+
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px">操作介面</h3>
+      <div class="op-grid">
+        <div class="op-item"><span class="k">Loop Frequency</span><span class="v">50–1000 Hz,step 50</span></div>
+        <div class="op-item"><span class="k">Target Angle</span><span class="v">−45°–45°</span></div>
+        <div class="op-item"><span class="k">Kp / Ki / Kd</span><span class="v">0.5–30 / 0–4.0 / 0–1.5</span></div>
+        <div class="op-item"><span class="k">Reset</span><span class="v">θ = 0.4 rad(22.9°)</span></div>
+        <div class="op-item"><span class="k">手動撥動(擾動)</span><span class="v">ω = −4 rad/s</span></div>
+        <div class="op-item"><span class="k">固定常數</span><span class="v">J = 0.025 kg·m² , b = 0.005</span></div>
+      </div>
+    </div>
+
+    <h3>單環力矩形成</h3>
+    <div class="eq">
+      <div class="line">e = r − θ ,&nbsp; ė = ṙ − ω</div>
+      <div class="line">τ = K<sub>p</sub>e + K<sub>i</sub>∫e dt + K<sub>d</sub>ė</div>
+      <div class="eq-note">目標固定時 ṙ=0,故 ė=−ω,正角速度會產生反向 D 力矩;若目標本身在移動則不能這樣化簡。</div>
+    </div>
+
+    <h3>PD 閉迴路係數對照(與模擬器常數完全吻合)</h3>
+    <div class="eq">
+      <div class="line">Θ(s)/R(s) = (K<sub>d</sub>s + K<sub>p</sub>) / (Js² + (b+K<sub>d</sub>)s + K<sub>p</sub>)</div>
+      <div class="line">ω<sub>n</sub> = √(K<sub>p</sub>/J) ,&nbsp;&nbsp; ζ = (b+K<sub>d</sub>) / (2√(JK<sub>p</sub>))</div>
+      <div class="eq-note">代入 J=0.025、b=0.005、K<sub>p</sub>=6:ω<sub>n</sub>≈15.49 rad/s(2.47 Hz)。指定 ζ=0.7 反解 K<sub>d</sub>=2ζ√(JK<sub>p</sub>)−b≈0.537 — 滑桿 step 0.05,最接近可停在 0.55。</div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>任務</th><th>設定</th><th>觀察重點</th></tr>
+        <tr><td>P/D 比較</td><td>fs=200Hz、Ki=0、Kp=6;Kd 試 0、0.20、0.55</td><td>ζ 上升對超越量與整定時間的影響</td></tr>
+        <tr><td>I 比較</td><td>固定 Kd=0.55,Ki 試 0、0.5、1.0</td><td>慢振盪、穩態誤差消除速度</td></tr>
+        <tr><td>取樣頻率</td><td>固定增益,fs 依序 50、200、1000 Hz</td><td>驗證「取樣變快只代表計算間隔縮短」,響應本身不變</td></tr>
+      </table>
+    </div>
+    <p style="font-size:13px;color:var(--ink-soft)">Routh 穩定條件 (b+K<sub>d</sub>)K<sub>p</sub> &gt; JK<sub>i</sub>:代入 b=0.005、Kd=0.55、Kp=6、J=0.025 → Ki 上限約 133,遠超過滑桿最大值 4,代表課堂操作範圍內 I 項不會真的讓系統發散,學生看到的是「慢振盪與恢復」而非失控。</p>
+
+    <div class="callout new">
+      <span class="badge b-new">新增任務</span>&nbsp; 這支模擬器的 h2 標題自己寫著核心主題是「反應頻率提高時,系統對大 Kp 的承受力呈平方倍數暴增」,但原本的規劃沒有真正去驗證它。這其實是一個可推導的結果:對雙積分器 J·θ̈=τ 做 ZOH 取樣後,P 控制器的離散穩定邊界近似滿足 K<sub>p,max</sub> ∝ f<sub>s</sub>²。
+      <div class="eq" style="margin:10px 0 4px;background:transparent;padding:0;text-align:left;font-size:13px">
+        任務:固定 Ki=Kd=0,在 50 / 100 / 200 / 400 Hz 下分別搖 Kp,找出剛好開始發散的臨界值 K<sub>p,max</sub>(fs),再檢查 K<sub>p,max</sub>/fs² 是否接近常數。
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ 實驗 B ═══════════════════════ -->
+  <section id="expB">
+    <div class="accent-bar"></div>
+    <h2>實驗 B・外角度環與內角速度環</h2>
+    <p class="section-sub">對應 <code>spring_dual_pid_simulation.html</code>。控制律完全正確,但 <strong>J 不是獨立滑桿</strong>,需要換算 m、L 組合。<span class="badge b-mod" style="margin-left:6px">部分修改</span></p>
+
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px">操作介面</h3>
+      <div class="op-grid">
+        <div class="op-item"><span class="k">Loop Frequency</span><span class="v">50–1000 Hz(單一頻率,雙環共用)</span></div>
+        <div class="op-item"><span class="k">外環 Kp<sub>out</sub>(Ka)</span><span class="v">0.5–20</span></div>
+        <div class="op-item"><span class="k">內環 Kp / Ki / Kd</span><span class="v">0.1–10 / 0–5 / 0–1.0</span></div>
+        <div class="op-item"><span class="k">系統質量 m</span><span class="v">0.2–5.0 kg,step 0.1</span></div>
+        <div class="op-item"><span class="k">機臂半長 L</span><span class="v">0.15–0.35 m,step 0.01</span></div>
+        <div class="op-item"><span class="k">轉動慣量 J</span><span class="v">= m·L²,唯讀顯示,<u>無滑桿、無手動覆蓋</u></span></div>
+      </div>
+    </div>
+
+    <h3>串級控制的訊號</h3>
+    <div class="eq">
+      <div class="line">e<sub>θ</sub> = r − θ ,&nbsp; ω<sub>ref</sub> = K<sub>a</sub>e<sub>θ</sub> ,&nbsp; e<sub>ω</sub> = ω<sub>ref</sub> − ω</div>
+      <div class="line">τ = K<sub>pω</sub>e<sub>ω</sub> + K<sub>iω</sub>∫e<sub>ω</sub>dt + K<sub>dω</sub>ė<sub>ω</sub></div>
+    </div>
+
+    <h3>外 P／內 P 等效二階模型(僅在 K<sub>iω</sub>=K<sub>dω</sub>=0 且指令未限幅時成立)</h3>
+    <div class="eq">
+      <div class="line">ω<sub>n</sub> = √(K<sub>pω</sub>K<sub>a</sub>/J) ,&nbsp;&nbsp; ζ = (b+K<sub>pω</sub>) / (2√(JK<sub>pω</sub>K<sub>a</sub>))</div>
+    </div>
+
+    <div class="callout warn">
+      <span class="badge b-warn">需注意</span>&nbsp; 程式碼把 ω<sub>ref</sub> 限幅在 ±12 rad/s(<code>Math.max(Math.min(...,12.0),-12.0)</code>)。PDF 公式假設「未限幅」— 用建議的 Ka=2/5/10 搭配 15° 目標角(ω<sub>ref</sub>最大約2.6 rad/s)不會觸發;但若把 Ka 拉到滑桿上限 20 又搭配 45° 目標角(理論 ω<sub>ref</sub>≈15.7 rad/s),就會撞到限幅,響應會偏離公式預測。課堂上請提醒學生不要同時拉滿這兩個滑桿。
+    </div>
+
+    <h3>實驗任務</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>任務</th><th>基準設定</th><th>備註</th></tr>
+        <tr><td>外環增益 Ka 比較</td><td>fs=200Hz、J≈0.025(見下方換算)、內 Kp=0.3、Ki=Kd=0;Ka 試 2、5、10</td><td>觀察 ω<sub>n</sub> 上升、ζ 下降</td></tr>
+        <tr><td>慣量 J 比較</td><td>固定 Ka=2、內 Kp=0.3;J 試 0.015、0.025、0.050</td><td>見下表 m/L 換算(J 非獨立滑桿)</td></tr>
+      </table>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>目標 J (kg·m²)</th><th>建議 mass</th><th>建議 arm length</th><th>實際算出 J</th><th>誤差</th></tr>
+        <tr><td>0.025</td><td>0.4 kg</td><td>0.25 m</td><td>0.025000</td><td>精確</td></tr>
+        <tr><td>0.050</td><td>0.8 kg</td><td>0.25 m</td><td>0.050000</td><td>精確</td></tr>
+        <tr><td>0.015</td><td>0.6 kg</td><td>0.16 m</td><td>0.01536</td><td>+2.4%(滑桿離散化下最接近值)</td></tr>
+      </table>
+    </div>
+    <p style="font-size:13px;color:var(--ink-soft)">arm length 在這個模型裡只影響 J 的計算,不影響力矩生成(沒有實作 τ=L(F<sub>R</sub>−F<sub>L</sub>) 的槓桿模型),所以三次試驗用不同的 L 並不會混淆變因,只是拿來湊出目標 J。</p>
+
+    <div class="callout mod">
+      <span class="badge b-mod">開場提醒</span>&nbsp; 介面預設值是 freq=50Hz、Kp<sub>out</sub>=5.0、Kp<sub>in</sub>=2.0、Ki<sub>in</sub>=0.5、Kd<sub>in</sub>=0.05、mass=1.0kg、L=0.25m(J=0.0625),都跟本頁基準(fs=200Hz、Ka=2、內Kp=0.3、Ki=Kd=0、J=0.025)不同。上機前請先照上表把滑桿歸位,再開始比較實驗。
+    </div>
+
+    <h3>質量、臂長與轉動慣量(原理)</h3>
+    <div class="eq">
+      <div class="line">J = ∫r⊥² dm ,&nbsp; τ = L(F<sub>R</sub>−F<sub>L</sub>) ,&nbsp; ω̇ = (τ−bω)/J</div>
+      <div class="eq-note">本模擬目前只有 J 真正進入動力學,m/L 的個別變化不能作為實體機構結論(τ=L(F<sub>R</sub>−F<sub>L</sub>) 這個槓桿模型未實作)。</div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ 實驗 C ═══════════════════════ -->
+  <section id="expC">
+    <div class="accent-bar"></div>
+    <h2>實驗 C・三軸姿態控制與頻域分析</h2>
+    <p class="section-sub">對應 <code>cascaded_pid_3d.html</code>。慣量估算、頻率設定完全對得上;濾波、延遲、致動器阻抗<strong>未實作</strong>;新發現一個工具內建但講義沒提到的精確穩定度指標 ρ。<span class="badge b-mod" style="margin-left:6px">部分修改</span></p>
+
+    <div class="card">
+      <h3 style="margin-top:0;font-size:15px">操作介面</h3>
+      <div class="op-grid">
+        <div class="op-item"><span class="k">機體重量 m</span><span class="v">50–5000 g</span></div>
+        <div class="op-item"><span class="k">視覺尺度 L</span><span class="v">5–150 cm;實際臂長=0.004L m</span></div>
+        <div class="op-item"><span class="k">轉動慣量 J</span><span class="v">自動 = f(m,L),或勾選「手動覆蓋」直接輸入(g·m²)</span></div>
+        <div class="op-item"><span class="k">外環 Angle</span><span class="v">50–4000 Hz(數字輸入,非滑桿)</span></div>
+        <div class="op-item"><span class="k">內環 Rate</span><span class="v">100–8000 Hz;系統自動取整數分頻對齊外環</span></div>
+        <div class="op-item"><span class="k">外環 Kp(Roll/Pitch/Yaw)</span><span class="v">三軸各自獨立</span></div>
+        <div class="op-item"><span class="k">內環 Kp/Ki/Kω*/ILim</span><span class="v">Roll、Pitch 各自獨立;Kω* 即阻尼 Kd</span></div>
+        <div class="op-item"><span class="k">PM / GM / Bode</span><span class="v">僅分析 Rate(內環)迴路</span></div>
+        <div class="op-item"><span class="k">飛行指令</span><span class="v">Roll+Pitch±20°、Roll±30°、Hover、隨機干擾、重置</span></div>
+      </div>
+    </div>
+
+    <h3>三維動力學(與模擬器完全一致)</h3>
+    <div class="eq">
+      <div class="line">θ̇<sub>x</sub> = ω<sub>x</sub> ,&nbsp; ω̇<sub>x</sub> = (τ<sub>x</sub>−bω<sub>x</sub>)/J + d<sub>x</sub></div>
+      <div class="line">ω̇<sub>z</sub> = (τ<sub>z</sub>−bω<sub>z</sub>)/(J/2) + d<sub>z</sub></div>
+      <div class="eq-note">Roll、Pitch 共用同一個 J,Yaw 慣量固定取 J/2 — 程式碼逐行對應。</div>
+    </div>
+
+    <h3>慣量估算(與例題數字完全吻合)</h3>
+    <div class="eq">
+      <div class="line">J = 4(0.085m)(L<sub>p</sub>sin45°)² + ½(0.66m)(0.2L<sub>p</sub>)²</div>
+      <div class="eq-note">每顆馬達+槳佔 8.5%、中心機體佔 66%,與 <code>computeJ()</code> 函式假設一致。代入 m=650g、L=35cm(L<sub>phys</sub>=0.14m)算出 J≈2.33 g·m²,和例題相同。</div>
+    </div>
+    <p style="font-size:13px;color:var(--ink-soft)"><strong>介面現在是核取方塊 + 數字框</strong>(J 滑桿已移除),勾選「手動覆蓋」後可直接輸入 1.17 / 2.33 / 4.66 g·m²,不會有離散化誤差,比舊版滑桿更精確。</p>
+
+    <h3>內外環頻率</h3>
+    <p style="font-size:13.5px;color:var(--ink-soft)">外環/內環頻率是直接輸入數字(非滑桿),範圍外環 50–4000Hz、內環 100–8000Hz;系統會自動取整數分頻比對齊,畫面上顯示的「實際內/外環 Hz」才是真正生效的數值。基準 fo=500Hz、fi=2000Hz(比例4×)與介面預設值完全相同。</p>
+
+    <h3>Rate 內環的精確離散裕度模型 <span class="badge b-mod">公式已更正</span></h3>
+    <div class="eq">
+      <div class="line">z = e^(jωT<sub>i</sub>)</div>
+      <div class="line">C(z) = K<sub>p</sub> + K<sub>d</sub> + K<sub>i</sub>·T<sub>i</sub>·z/(z−1)</div>
+      <div class="line">G(z) = (T<sub>i</sub>/J) / (z − (1 − bT<sub>i</sub>/J))</div>
+      <div class="line">L(z) = C(z)·G(z)</div>
+      <div class="eq-note">這是 forward-Euler 顯式離散化下的<strong>精確</strong>迴路增益,K<sub>d</sub> 直接乘上原始角速度(不是微分項,也沒有濾波),而且<strong>不含任何額外傳輸延遲</strong>——原本規劃裡的濾波(F(s))與純延遲(e<sup>−jωT</sup>)近似,在這支工具裡都沒有實作。</div>
+    </div>
+
+    <details open>
+      <summary><span class="badge b-warn">未實作 · 理論選讀</span>&nbsp; 濾波角速度阻尼</summary>
+      <div class="body">
+        原公式 ω<sub>f,k</sub>=ω<sub>f,k−1</sub>+α(ω<sub>k</sub>−ω<sub>f,k−1</sub>)、τ<sub>k</sub>=K<sub>p</sub>(ω<sub>ref</sub>−ω<sub>k</sub>)+K<sub>i</sub>I<sub>k</sub>−K<sub>d</sub>ω<sub>f,k</sub> 描述的低通濾波,在這支模擬器中沒有對應的 fc 參數或計算 — Kd 是直接乘在<strong>未濾波</strong>的角速度上。保留作為理論延伸閱讀,若要在課堂上實測濾波效果,需要另外的工具版本或用 MATLAB/Python 補充。
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="badge b-warn">未實作 · 理論選讀</span>&nbsp; 延遲與相位裕度</summary>
+      <div class="body">
+        純延遲相位損失 Δφ=−360°·f·T<sub>d</sub> 是一般控制理論的有效結果,但 <code>margins_bode()</code> 函式原始碼註解明寫「No invented transport delay」— 目前相位裕度計算完全不含這項近似,介面上也沒有 T<sub>d</sub> 輸入。
+      </div>
+    </details>
+
+    <details>
+      <summary><span class="badge b-warn">未實作 · 建議移除</span>&nbsp; 致動器增益與阻抗</summary>
+      <div class="body">
+        K<sub>t</sub>(±20%)、R<sub>DS</sub>(0/50/100mΩ)等致動器誤差注入,在這支模擬器裡完全沒有對應的輸入或計算。這個實驗段落目前做不到,建議整段移除或改列「未來版本規劃」,不排入本次課堂操作項目。
+      </div>
+    </details>
+
+    <div class="callout new">
+      <span class="badge b-new">新增</span>&nbsp; 雙環局部穩定度 ρ — 涵蓋外環+內環的精確判據
+      <p style="margin:8px 0 0">Bode/PM/GM 只分析 Rate(內環)迴路,並假設外環近似 H<sub>ω</sub>≈1。工具左側「⚡ 內環離散穩定裕度」面板下方其實還有另一組獨立算出的指標:<code>cascade_radius()</code> 直接建立「一個外環週期」的線性化狀態轉移矩陣(狀態:角度偏差、角速度偏差,Ki&gt;0 時再加積分狀態),取</p>
+      <div class="eq" style="margin:10px 0;background:transparent;padding:0;text-align:left">ρ = max |eig(A)|</div>
+      <p style="margin:0">ρ&lt;1 表示串級系統(小信號)穩定,ρ≥1 為臨界或發散——這是<strong>涵蓋外環+內環整個串級迴路</strong>的精確判據,比只看內環的 Bode 更完整。</p>
+      <div class="eq" style="margin:10px 0 0;background:transparent;padding:0;text-align:left;font-size:13px">
+        任務:固定內環參數在穩定範圍,只調高外環 Kp(Ka),觀察 Bode/PM/GM(只看內環)維持不變,但 ρ 逐漸逼近甚至超過 1 — 藉此體會「內環穩定不代表串級穩定」這個串級控制特有的失效模式。
+      </div>
+    </div>
+
+    <h3>修訂後的課堂任務</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>任務</th><th>設定</th><th>觀察</th></tr>
+        <tr><td>慣量調校</td><td>勾選手動覆蓋,J 試 1.17、2.33、4.66 g·m²</td><td>固定增益下角加速度與極點變化</td></tr>
+        <tr><td>內外頻率</td><td>固定 fo=500Hz,fi 比較 1000、2000、4000Hz</td><td>檢查步進一致性,響應是否隨 fi 改變</td></tr>
+        <tr><td>Kd(Kω*)阻尼</td><td>基準 fo=500、fi=2000、J=2.33;Roll±30°階躍;Kd 試 0、0.15、0.30</td><td>PM、GM、Bode 交越頻率與時域超越量</td></tr>
+        <tr><td>ρ vs Bode 對照(新增)</td><td>固定內環,外環 Ka 由小到大</td><td>Bode/PM/GM 不變但 ρ 上升 → 串級失穩</td></tr>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <span class="badge b-warn">需注意</span>&nbsp; 「💥 隨機外力干擾」按鈕沒有固定亂數種子,每次點擊 Roll/Pitch/Yaw 的干擾量都不同,不可重現。這和後面「擾動與積分限幅」原則(隨機擾動需固定種子才能重現)互相牴觸——僅適合質性示範,不適合拿來做量化的 ILim 比較實驗。
+    </div>
+
+    <div class="callout mod">
+      <span class="badge b-mod">跨實驗一致性</span>&nbsp; 這支工具的預設阻尼 b=0.012,和實驗 A/B 的固定值 b=0.005 不同(這裡是可調輸入,範圍 0–0.5)。銜接三個實驗時,若要強調「同一台機器」的連續性,記得手動把 b 改回 0.005 再開始。
+    </div>
+  </section>
+
+  <section id="homework">
+    <h2>課後作業與討論</h2>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>#</th><th>內容</th></tr>
+        <tr><td>1</td><td>將 PD 分母正規化,逐項辨認 ω<sub>n</sub> 與 ζ,並指出分子零點。</td></tr>
+        <tr><td>2</td><td>每組調校提交「原理預測、參數、初始條件、觀察與解釋」。</td></tr>
+        <tr><td>3</td><td>比較 f<sub>n</sub>、f<sub>d</sub>、f<sub>BW</sub>、f<sub>s</sub> 的定義,計算 f<sub>n</sub>=2.47Hz、ζ=0.7 時的 f<sub>d</sub>。</td></tr>
+        <tr><td>4</td><td>推導外 P／內 P 的分母,解釋 K<sub>a</sub> 與 J 對 ω<sub>n</sub>、ζ 的影響。</td></tr>
+        <tr><td>5</td><td><span class="badge b-new">新增</span>&nbsp; 推導 C(z)=Kp+Kd+Ki·T·z/(z−1) 的來源:為什麼直接乘在角速度上的阻尼項 Kd,在離散迴路增益裡會跟 Kp 疊加成常數項,而不是像連續時間微分項那樣貢獻一個 s 的零點?</td></tr>
+      </table>
+    </div>
+    <p style="color:var(--ink-soft);font-size:14px">討論:模型增益部署到實體飛控前,還需要哪些單位換算與量測?哪些理論選讀章節(濾波、延遲、致動器阻抗)值得在下一版模擬器補上?</p>
+  </section>
+
+  <section id="appendix">
+    <h2>附錄:三支模擬器符號對照</h2>
+    <p class="section-sub">三支工具用的變數命名不完全一致,上課時建議把這張表印給學生對照。</p>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>物理意義</th><th>講義符號</th><th>實驗 A</th><th>實驗 B</th><th>實驗 C</th></tr>
+        <tr><td>角度比例增益</td><td>K<sub>p</sub></td><td>kpSlider</td><td>Kp<sub>out</sub>(外環,即 Ka)</td><td>ang_r/p/y_kp</td></tr>
+        <tr><td>角速度比例增益</td><td>K<sub>pω</sub></td><td>—</td><td>Kp<sub>in</sub></td><td>rr/rp/ry_kp</td></tr>
+        <tr><td>角速度積分增益</td><td>K<sub>iω</sub></td><td>—</td><td>Ki<sub>in</sub></td><td>rr/rp/ry_ki</td></tr>
+        <tr><td>角速度阻尼/微分</td><td>K<sub>dω</sub></td><td>kdSlider(真微分)</td><td>Kd<sub>in</sub>(真微分)</td><td>rr/rp_kd(標示 Kω*,純阻尼非微分)</td></tr>
+        <tr><td>轉動慣量</td><td>J</td><td>固定 0.025,無輸入</td><td>= m·L²,唯讀無覆蓋</td><td>自動或手動覆蓋(g·m²)</td></tr>
+        <tr><td>阻尼係數</td><td>b</td><td>固定 0.005</td><td>固定 0.005</td><td>可調,預設 0.012</td></tr>
+        <tr><td>取樣頻率</td><td>f<sub>s</sub></td><td>freqSlider(單一)</td><td>freqSlider(雙環共用)</td><td>outer_freq / inner_freq(各自獨立)</td></tr>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>第七週 PID 調校與模擬判讀・完整實驗規劃校正版・依 spring_pid_simulation.html、spring_dual_pid_simulation.html、cascaded_pid_3d.html 逐項核對。</footer>
+
+</body>
+</html>
