@@ -1,0 +1,356 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RP2354A LED 五種驅動方法｜Arduino IDE 完整教材</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f3f5f8;color:#192538;font-family:system-ui,-apple-system,"Noto Sans CJK TC","Microsoft JhengHei",sans-serif;line-height:1.8}header{background:#12223a;color:white;padding:55px max(6vw,24px) 40px}header .kicker{color:#a9c5e8;font-size:14px;letter-spacing:.13em}h1{font-size:clamp(27px,4vw,44px);line-height:1.35;margin:12px 0}header p{color:#d8e5f5;max-width:900px}.chips{display:flex;gap:10px;flex-wrap:wrap}.chips span{padding:4px 12px;border:1px solid #526681;border-radius:20px;font-size:13px}.layout{display:grid;grid-template-columns:220px minmax(0,1050px);gap:26px;max-width:1360px;margin:auto;padding:30px 22px}nav{position:sticky;top:20px;align-self:start;font-size:14px}nav a{display:block;text-decoration:none;color:#344862;padding:5px 10px;border-left:2px solid #d0d8e4}nav a:hover{border-color:#316cba;color:#1654a3}main{min-width:0}section{background:white;padding:30px 35px;margin-bottom:22px;border:1px solid #e0e6ef;border-radius:12px;scroll-margin-top:20px}h2{font-size:26px;line-height:1.4;margin:0 0 18px;color:#133d6a}h3{font-size:19px;margin:26px 0 10px}p{margin:11px 0}.lead{font-size:18px;color:#51657d}.callout{background:#edf5fd;border-left:4px solid #3077bb;padding:15px 18px;margin:18px 0}.note{background:#fff6df;border-left-color:#c18a20}.eq{font-family:Georgia,"Noto Sans CJK TC",serif;font-size:19px;text-align:center;background:#f4f7fb;padding:20px 12px;border-radius:7px;overflow-wrap:anywhere}.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px;margin:14px 0}th{text-align:left;background:#eaf0f7;white-space:nowrap}th,td{padding:10px 12px;border:1px solid #d7e0eb;vertical-align:top}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.91em;background:#edf1f7;padding:2px 4px;border-radius:3px}pre{background:#122033;color:#e5edf8;padding:22px;overflow-x:auto;border-radius:8px;line-height:1.6;font-size:13px;tab-size:2}pre code{background:none;color:inherit;padding:0;font-size:inherit}button{background:#245f9d;color:white;border:0;border-radius:5px;padding:8px 13px;cursor:pointer;font:inherit;font-size:13px}.codebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.codebar span{margin-right:auto;font-size:13px;color:#52647b}a{color:#175eaa}li{margin:5px 0}.demo{background:#0d1728;border-radius:10px;padding:24px;color:#d4e1f4}.lamps{display:flex;gap:45px;justify-content:center;padding:25px 0 30px}.lampwrap{text-align:center;font-size:13px}.lamp{width:58px;height:58px;border-radius:50%;margin:0 auto 12px;background:var(--c);opacity:.4;box-shadow:0 0 35px var(--c)}.controls{display:flex;gap:15px;align-items:center;flex-wrap:wrap}.controls input{flex:1;min-width:130px}.small{font-size:13px;color:#62728a}.demo .small{color:#a1b4d0}svg{display:block;max-width:100%;height:auto;margin:auto}.ok{color:#17674d;font-weight:bold}footer{text-align:center;padding:25px;color:#53667e;font-size:13px}@media(max-width:950px){.layout{display:block;padding:16px}nav{position:static;display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}section{padding:24px 18px}nav a{border:1px solid #d0d8e4;border-radius:4px}.lamps{gap:28px}}@media print{body{background:white}header{background:white;color:#12223a;padding:10px}header p,header .kicker{color:#344862}nav,.controls,.codebar button{display:none}.layout{display:block;padding:0}section{border:0;padding:14px 0;break-before:auto}h2,h3{break-after:avoid}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f5f8;color:#162238;font-size:9px;page-break-inside:auto}.demo{display:none}table{font-size:10px}a{color:#12223a}}</style></head><body><header><div class="kicker">RP2354A · ARDUINO IDE · GPIO LAB</div><h1>三色 LED 霓虹效果<br>從 while 迴圈到 PIO</h1><p>五份可獨立使用的完整程式，連結 GPIO、時間排程、PWM、中斷與可程式化 I/O。主範例是藍、紅、黃交錯呼吸；另附數位跑馬燈。</p><div class="chips"><span>GPIO7 藍</span><span>GPIO8 紅</span><span>GPIO9 黃</span><span>Arduino-Pico 5.6.0</span><span>2026-09-22</span></div></header><div class="layout"><nav aria-label="章節目錄"><a href="#start">01 使用與環境</a><a href="#wiring">02 接線與極性</a><a href="#principle">03 效果與 PWM</a><a href="#compare">04 五種方法比較</a><a href="#method1">05 while 迴圈＋軟體 PWM</a><a href="#method2">06 timer interrupt＋軟體 PWM</a><a href="#method3">07 PIO state machine PWM</a><a href="#method4">08 millis 非阻塞狀態機</a><a href="#method5">09 硬體 PWM＋millis</a><a href="#experiments">10 課堂實驗</a><a href="#faq">11 排錯與調整</a><a href="#verification">12 驗證狀態</a><a href="#refs">13 參考資料</a></nav><main>
+<section id="start"><h2>01｜先把程式跑起來</h2><p>五份 <code>.ino</code> 是<strong>五個獨立 Sketch</strong>，一次開啟並上傳一份。不可把五份程式放到同一個 Sketch 的不同頁籤，否則會重複定義 <code>setup()</code>、<code>loop()</code>。</p><ol><li>在 Arduino IDE 2.x 的偏好設定加入 Arduino-Pico Boards Manager 網址：<br><a href="https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json">package_rp2040_index.json</a>。</li><li>Boards Manager 安裝 Earle F. Philhower 的 <strong>Raspberry Pi Pico/RP2040/RP2350</strong> 核心。本教材以 <strong>5.6.0</strong> 固定版本編譯核對，使用其內附 Pico SDK；不需要另外安裝 timer 或 PIO 函式庫。[1]</li><li>自製 RP2354A 板可從 <strong>Generic RP2350</strong> 開始，Chip Variant 選 <strong>RP2350A</strong>，Flash Size 選 <strong>2MB (no FS)</strong>，CPU Architecture 選 ARM，CPU Speed 選 150 MHz，維持一般 bare-metal 執行模式。RP2354A 的封裝內 Flash 為 2MB；不要因為 Pico 2 是 4MB 就照抄其容量。[6]</li><li>若你的板已有正確且可用的專用 board definition，優先沿用，並確認整數 7/8/9 對應 GP7/GP8/GP9。本文的 Generic RP2350 設定採直接 GPIO 編號。</li><li>解壓程式包，進入所選範例資料夾，開啟同名 <code>.ino</code>；按 Verify，再依板子的 BOOTSEL／USB 上傳方式燒錄。timer 與 PIO 版可開 Serial Monitor 查看錯誤訊息，設定 115200；沒有開啟監控也會啟動燈效。</li></ol><div class="callout">本教材假設三顆是普通、獨立、以電流限流電阻驅動的 LED，不是 WS2812 等帶通訊晶片的 LED，也不是單一 RGB LED。霓虹效果指視覺上的交錯明滅／呼吸。</div></section>
+<section id="wiring"><h2>02｜接線、限流與 GPIO 編號</h2><div class="tablewrap"><table><tr><th>LED</th><th>程式 GPIO</th><th>接法</th><th>點亮條件</th></tr><tr><td>Blue 藍色</td><td>7</td><td>GP7 → 電阻 → LED 陽極；陰極 → GND</td><td>HIGH</td></tr><tr><td>Red 紅色</td><td>8</td><td>GP8 → 電阻 → LED 陽極；陰極 → GND</td><td>HIGH</td></tr><tr><td>Yellow 黃色</td><td>9</td><td>GP9 → 電阻 → LED 陽極；陰極 → GND</td><td>HIGH</td></tr></table></div>
+<svg viewBox="0 0 820 220" role="img" aria-label="GPIO7、8、9 各自串聯一個電阻與 LED，LED 陰極接共同地"><rect x="15" y="20" width="150" height="170" rx="12" fill="#eaf0f7" stroke="#aebdd0"/><text x="90" y="50" text-anchor="middle" fill="#153656" font-size="18">RP2354A</text><text x="93" y="85" text-anchor="middle" font-size="16">GP7</text><path d="M165 80 H225 M315 80 H400 M445 80 H620" stroke="#47617c" stroke-width="2" fill="none"/><rect x="225" y="70" width="90" height="20" fill="white" stroke="#47617c"/><text x="270" y="85" text-anchor="middle" font-size="13">470 Ω</text><path d="M400 66 L400 94 L435 80 Z M437 65 V95" fill="#2773d3" stroke="#2773d3" stroke-width="2"/><text x="488" y="70" font-size="14" fill="#2773d3">Blue LED</text><text x="93" y="130" text-anchor="middle" font-size="16">GP8</text><path d="M165 125 H225 M315 125 H400 M445 125 H620" stroke="#47617c" stroke-width="2" fill="none"/><rect x="225" y="115" width="90" height="20" fill="white" stroke="#47617c"/><text x="270" y="130" text-anchor="middle" font-size="13">470 Ω</text><path d="M400 111 L400 139 L435 125 Z M437 110 V140" fill="#d64040" stroke="#d64040" stroke-width="2"/><text x="488" y="115" font-size="14" fill="#d64040">Red LED</text><text x="93" y="175" text-anchor="middle" font-size="16">GP9</text><path d="M165 170 H225 M315 170 H400 M445 170 H620" stroke="#47617c" stroke-width="2" fill="none"/><rect x="225" y="160" width="90" height="20" fill="white" stroke="#47617c"/><text x="270" y="175" text-anchor="middle" font-size="13">470 Ω</text><path d="M400 156 L400 184 L435 170 Z M437 155 V185" fill="#b18400" stroke="#b18400" stroke-width="2"/><text x="488" y="160" font-size="14" fill="#b18400">Yellow LED</text><path d="M620 80 V195 M601 195 H639 M607 201 H633 M614 207 H626" stroke="#47617c" stroke-width="2" fill="none"/><text x="645" y="177" font-size="15">共同 GND</text><text x="385" y="47" font-size="13">陽極 A</text><text x="443" y="47" font-size="13">陰極 K</text></svg>
+<p>每顆 LED 都要各自限流。圖中 <strong>470 Ω</strong> 為低電流起始選擇；最終依 LED 的順向壓降 V<sub>F</sub> 與需要的亮度計算。電阻也可放在 LED 陰極端，只要與 LED 串聯即可。</p><div class="eq">R ≈ (3.3 V − V<sub>F</sub>) / I<sub>LED</sub></div><p>例如紅光 V<sub>F</sub>=2.0 V、R=470 Ω，理想電流約 2.8 mA；藍光若 V<sub>F</sub>=3.0 V，則約 0.64 mA。這些 V<sub>F</sub> 是示例，請以實際元件為準。不同顏色的亮度不能只靠相同數值推定；可調整電阻或各通道最大占空比。</p><p><strong>GPIO7 不是晶片第 7 腳，也不一定是開發板第 7 根排針。</strong>請依自製板原理圖定位 GP7/8/9。若板上已有串聯電阻，可直接沿用符合電流需求的配置。</p><div class="callout note"><strong>若既有板是低電位點亮：</strong>例如 3.3V → 電阻 → LED → GPIO，本文預設極性會相反。數位版反轉 HIGH/LOW；PWM 版反轉物理輸出。這些使用 Pico SDK 的範例也可在各自 <code>setup()</code> 所有腳位／外設初始化完成後，加入 <code>gpio_set_outover(pin, GPIO_OVERRIDE_INVERT)</code>（對三個 pin 各執行一次，並 include <code>hardware/gpio.h</code>）；不可再同時反轉 duty，避免反轉兩次。</div></section>
+<section id="principle"><h2>03｜兩個時間尺度：載波與呼吸包絡</h2><p><strong>Blinking</strong> 是肉眼可見的慢速開／關；<strong>PWM</strong> 用較高速開／關改變平均亮度；<strong>呼吸效果</strong> 再用慢速包絡去改變 PWM 占空比。方法一、二、三、五使用同一組三色交錯包絡，方法四使用數位跑馬燈。</p><div class="eq">D = t<sub>HIGH</sub> / T<sub>PWM</sub>；f<sub>PWM</sub> = 1 / T<sub>PWM</sub><br>I<sub>avg</sub> ≈ D × I<sub>on</sub></div><p>D 是占空比，介於 0 與 1；t<sub>HIGH</sub> 是一個週期內高電位時間；T<sub>PWM</sub> 是 PWM 週期；I<sub>on</sub> 是 LED 點亮時的電流。平均電流公式忽略開關暫態與 LED 非線性；人眼感覺的亮度也不會與平均電流完全線性。</p><h3>所有呼吸版共用的亮度函式</h3><p>以 10 ms 為一格、384 格為一週期，因此 T<sub>env</sub>=3.84 s。藍、紅、黃的 offset 分別為 0、256、128：藍在 frame=0 最亮，紅在 frame=128 最亮，黃在 frame=256 最亮，相隔 1.28 s。</p><div class="eq">p = (frame + offset) mod 384<br>a = |p − 192|，0 ≤ a ≤ 192<br>duty = round[M × (a / 192)<sup>2</sup>]</div><p>frame 是當前影格；p 是加入色彩相位後的影格；a 是三角包絡高度；M 是最大設定值（軟體 PWM 為 64，PIO／硬體 PWM 為 255）。平方是 gamma≈2 的簡易視覺修正，不是精準的感光校準。整數式中的 36864=192²，18432 為除數的一半，用於四捨五入。先轉為 <code>uint32_t</code> 再相乘，避免窄整數乘法溢位。</p>
+<div class="demo"><div class="lamps"><div class="lampwrap"><div id="lamp0" class="lamp" style="--c:#4597ff"></div>GP7 · 藍<br><output id="d0"></output></div><div class="lampwrap"><div id="lamp1" class="lamp" style="--c:#ff4b60"></div>GP8 · 紅<br><output id="d1"></output></div><div class="lampwrap"><div id="lamp2" class="lamp" style="--c:#ffdb44"></div>GP9 · 黃<br><output id="d2"></output></div></div><div class="controls"><button id="toggle">暫停動畫</button><label for="phase">影格</label><input id="phase" type="range" min="0" max="383" value="0"><output id="frameOut">0 / 383</output></div><p class="small">慢速包絡示意，可暫停拖曳；數字為 8-bit 亮度設定值。螢幕不模擬實際 PWM 邊緣、LED 電流或精確人眼亮度。</p></div>
+<p>載波 312.5 Hz 或 1 kHz 與呼吸週期 3.84 s 是不同參數。提高載波頻率不會自動加快呼吸；降低 FRAME_MS 才會加快動畫。312.5 Hz 在部分相機或視線移動下仍可能呈現條紋／頻閃，不能把肉眼感覺平順視為波形量測。</p></section>
+<section id="compare"><h2>04｜方法比較</h2><div class="tablewrap"><table><tr><th>方法</th><th>誰產生輸出邊緣</th><th>誰更新動畫</th><th>目標時序</th><th>前景停頓時</th></tr><tr><td>1 while 軟體 PWM</td><td>CPU 前景</td><td>CPU 前景</td><td>約 312.5 Hz；64 slots</td><td>停在某個 HIGH/LOW 圖樣，波形失真</td></tr><tr><td>2 timer IRQ 軟體 PWM</td><td>CPU IRQ</td><td>CPU IRQ 查表</td><td>20 kHz IRQ；312.5 Hz PWM</td><td>IRQ 若正常，呼吸持續</td></tr><tr><td>3 PIO PWM</td><td>PIO 狀態機</td><td>CPU 前景</td><td>約 1 kHz；TOP=255</td><td>PWM 持續，包絡凍結</td></tr><tr><td>4 millis 跑馬燈</td><td>CPU 前景</td><td>CPU 前景</td><td>每步 180 ms，無 PWM</td><td>停在當前圖樣</td></tr><tr><td>5 硬體 PWM</td><td>PWM 外設</td><td>CPU 前景</td><td>約 1 kHz；range=255</td><td>PWM 持續，包絡凍結</td></tr></table></div><p>前景停頓指 <code>delay()</code> 或耗時計算，且沒有刻意關閉中斷或時鐘。timer callback 仍占用 CPU；PIO 與 PWM 外設產生載波邊緣時不需 CPU 逐次切腳。</p><p>方法四是「排程方式」，方法五是「輸出硬體＋排程方式」；它們不是完全互斥的分類。比較焦點應是：<strong>誰掌握時間、誰產生邊緣、CPU 是否仍要供應資料</strong>。本組例子的 PWM 解析度／頻率刻意不同，適合原理比較，不適合直接當相同條件的效能基準。</p></section><section id="method1"><h2>05｜方法一｜while 迴圈＋軟體 PWM</h2><p class="lead">CPU 親自產生每一個明滅時槽。</p><p>每次 <code>loop()</code> 先算三顆 LED 的亮度，再用外層 <code>while</code> 產生 64 個時槽；內層 <code>while</code> 持續檢查 <code>micros()</code>，等到本時槽滿 50 μs。三顆 LED 共用時槽計數器，依各自占空比同時輸出。</p><p><code>slot &lt; duty[i]</code> 是 PWM 的核心判斷。例如 duty=16，64 個時槽中的前 16 個輸出 HIGH，其餘 LOW，理想占空比就是 25%。duty=0 全暗，duty=64 全亮。</p><div class="eq">T<sub>PWM</sub> ≈ 64 × 50 μs = 3.2 ms；f<sub>PWM</sub> ≈ 312.5 Hz</div><p>這是目標值：程式執行、迴圈邊界與中斷會增加時間或造成抖動。<code>gpio_put_masked()</code> 一次更新指定 GPIO，避免三次 <code>digitalWrite()</code> 額外造成通道更新先後差；它只動到 GPIO7、8、9。</p><p><strong>適合教：</strong>迴圈、忙等、PWM 原理、CPU 占用。<strong>限制：</strong>主程式大部分時間用於產生波形；加入耗時計算會直接拉長某些亮／暗區間。此範例沒有關閉中斷，因此 USB 和其他中斷仍可執行。</p><h3>完整 Arduino 程式</h3><div class="codebar"><span>01_While_SoftwarePWM.ino</span><button data-copy="code1">複製程式</button><button data-download="code1" data-name="01_While_SoftwarePWM.ino">下載 .ino</button></div><pre><code id="code1">#include &lt;Arduino.h&gt;
+
+// GPIO numbers, not package-pin or board-header numbers.
+// Active HIGH: GPIO -&gt; resistor -&gt; LED anode; LED cathode -&gt; GND.
+constexpr uint8_t LED_PINS[3] = {7, 8, 9}; // Blue, Red, Yellow
+constexpr uint16_t OFFSETS[3] = {0, 256, 128};
+constexpr uint16_t FRAME_COUNT = 384;
+constexpr uint32_t FRAME_MS = 10; // One colour cycle = 3.84 s
+
+// Triangle envelope + approximate gamma 2.0 correction.
+// maximum=64 (software PWM) or 255 (PIO / hardware PWM).
+uint16_t brightness(uint16_t frame, uint16_t offset, uint16_t maximum) {
+  uint16_t p = (frame + offset) % FRAME_COUNT;
+  uint16_t a = (p &lt; 192) ? (192 - p) : (p - 192);
+  return (uint32_t(a) * a * maximum + 18432u) / 36864u;
+}
+
+#include &quot;hardware/gpio.h&quot;
+constexpr uint32_t LED_MASK = (1u &lt;&lt; 7) | (1u &lt;&lt; 8) | (1u &lt;&lt; 9);
+constexpr uint8_t PWM_STEPS = 64;
+constexpr uint32_t SLOT_US = 50; // Nominal PWM: 1/(64*50us)=312.5 Hz
+
+void setup() {
+  for (uint8_t pin : LED_PINS) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
+}
+
+void loop() {
+  static uint16_t frame = 0;
+  static uint32_t lastFrameMs = millis();
+  uint32_t now = millis();
+  uint32_t steps = (uint32_t)(now - lastFrameMs) / FRAME_MS;
+  if (steps != 0) {
+    lastFrameMs += steps * FRAME_MS;
+    frame = (frame + steps % FRAME_COUNT) % FRAME_COUNT;
+  }
+  uint8_t duty[3];
+  for (uint8_t i = 0; i &lt; 3; ++i)
+    duty[i] = brightness(frame, OFFSETS[i], PWM_STEPS);
+
+  uint8_t slot = 0;
+  while (slot &lt; PWM_STEPS) { // Generate one complete PWM period in software
+    uint32_t beginUs = micros();
+    uint32_t bits = 0;
+    for (uint8_t i = 0; i &lt; 3; ++i)
+      if (slot &lt; duty[i]) bits |= (1u &lt;&lt; LED_PINS[i]);
+    gpio_put_masked(LED_MASK, bits); // Change only GPIO7/8/9
+    while ((uint32_t)(micros() - beginUs) &lt; SLOT_US) {
+      // Busy wait: CPU cannot execute other foreground work here.
+      // Interrupts remain enabled, so this timing can have jitter.
+    }
+    ++slot;
+  }
+  // Arduino calls loop() again. A long task here distorts the PWM waveform.
+}
+</code></pre></section><section id="method2"><h2>06｜方法二｜timer interrupt＋軟體 PWM</h2><p class="lead">以 20 kHz 計時器回呼推進 PWM 與動畫。</p><p><code>add_repeating_timer_us(-50, ...)</code> 使用 Pico SDK 的 repeating timer，由 alarm pool 的計時器 IRQ 驅動回呼；不是在 <code>loop()</code> 裡輪詢時間。負號表示以相鄰回呼「開始時間」安排週期；正值則是上次回呼結束到下次開始的間隔。[3]</p><p>初始化先建立 384×3=1152 bytes 的亮度查表。回呼只讀表、比較、寫 GPIO 及遞增計數；不在 IRQ 中計算平方、印出訊息或等待。每 200 次回呼推進一個 10 ms 動畫影格，PWM 則每 64 次回呼完成一個週期。</p><p><code>activeDuty</code> 僅在 slot=0 時更新，避免占空比在一個 PWM 週期中途改變。200 並非 64 的整數倍，因此新影格最晚延後不到約 3.2 ms 才被採用，屬於本範例的設計。</p><div class="eq">f<sub>IRQ</sub> = 1 / 50 μs = 20,000 次/s<br>CPU 中斷負載 ≈ f<sub>IRQ</sub> × 每次回呼執行時間</div><p>若量到每次 IRQ 約 2 μs，僅此回呼就約占 4% CPU；這是計算範例，並非實測結果。實際還有進出 IRQ 的成本。中斷被遮蔽或其他 IRQ 延遲時，50 μs 不能保證；嚴重逾時時回呼可能追趕既定時刻，PWM 邊緣仍會失真。</p><p><code>ledTimer</code> 為全域物件，生命週期涵蓋整個計時器；檢查啟動回傳值，失敗時 LED 保持熄滅，序列埠每秒提示。回呼內的狀態僅由回呼存取，查表在啟動後不再修改，因此此例不需要用 <code>volatile</code> 假裝解決共享競爭。未來若主程式要改表，需另設同步機制。</p><p><strong>適合教：</strong>前景與 IRQ、短中斷、時序負載。這是「timer 中斷產生軟體 PWM」，不是 PWM 硬體外設。主程式加 <code>delay(2000)</code> 時，只要 IRQ 正常執行，呼吸動畫仍持續。</p><h3>完整 Arduino 程式</h3><div class="codebar"><span>02_TimerIRQ_SoftwarePWM.ino</span><button data-copy="code2">複製程式</button><button data-download="code2" data-name="02_TimerIRQ_SoftwarePWM.ino">下載 .ino</button></div><pre><code id="code2">#include &lt;Arduino.h&gt;
+
+// GPIO numbers, not package-pin or board-header numbers.
+// Active HIGH: GPIO -&gt; resistor -&gt; LED anode; LED cathode -&gt; GND.
+constexpr uint8_t LED_PINS[3] = {7, 8, 9}; // Blue, Red, Yellow
+constexpr uint16_t OFFSETS[3] = {0, 256, 128};
+constexpr uint16_t FRAME_COUNT = 384;
+constexpr uint32_t FRAME_MS = 10; // One colour cycle = 3.84 s
+
+// Triangle envelope + approximate gamma 2.0 correction.
+// maximum=64 (software PWM) or 255 (PIO / hardware PWM).
+uint16_t brightness(uint16_t frame, uint16_t offset, uint16_t maximum) {
+  uint16_t p = (frame + offset) % FRAME_COUNT;
+  uint16_t a = (p &lt; 192) ? (192 - p) : (p - 192);
+  return (uint32_t(a) * a * maximum + 18432u) / 36864u;
+}
+
+#include &quot;pico/time.h&quot;
+#include &quot;hardware/gpio.h&quot;
+constexpr uint32_t LED_MASK = (1u &lt;&lt; 7) | (1u &lt;&lt; 8) | (1u &lt;&lt; 9);
+constexpr uint8_t PWM_STEPS = 64;
+constexpr int64_t SLOT_US = 50;
+constexpr uint16_t TICKS_PER_FRAME = 200; // 200 * 50us = 10ms
+uint8_t dutyTable[FRAME_COUNT][3]; // 1152 bytes; written before timer starts
+repeating_timer_t ledTimer; // Must remain alive for the timer&#x27;s entire lifetime
+bool timerReady = false;
+
+bool ledTimerCallback(repeating_timer_t *timer) {
+  (void)timer;
+  static uint8_t slot = 0;
+  static uint16_t frame = 0;
+  static uint16_t envelopeTicks = 0;
+  static uint8_t activeDuty[3] = {0, 0, 0};
+  if (slot == 0) { // Latch all duties only at a PWM-period boundary
+    for (uint8_t i = 0; i &lt; 3; ++i) activeDuty[i] = dutyTable[frame][i];
+  }
+  uint32_t bits = 0;
+  for (uint8_t i = 0; i &lt; 3; ++i)
+    if (slot &lt; activeDuty[i]) bits |= (1u &lt;&lt; LED_PINS[i]);
+  gpio_put_masked(LED_MASK, bits);
+  slot = (slot + 1) % PWM_STEPS;
+  if (++envelopeTicks == TICKS_PER_FRAME) {
+    envelopeTicks = 0;
+    frame = (frame + 1) % FRAME_COUNT;
+  }
+  return true; // false would stop this repeating timer
+}
+
+void setup() {
+  Serial.begin(115200); // Never wait for the serial monitor
+  for (uint8_t pin : LED_PINS) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
+  for (uint16_t f = 0; f &lt; FRAME_COUNT; ++f)
+    for (uint8_t i = 0; i &lt; 3; ++i)
+      dutyTable[f][i] = brightness(f, OFFSETS[i], PWM_STEPS);
+  // Negative period requests start-to-start scheduling (not end-to-start).
+  timerReady = add_repeating_timer_us(-SLOT_US, ledTimerCallback,
+                                      nullptr, &amp;ledTimer);
+}
+
+void loop() {
+  static uint32_t lastMessageMs = 0;
+  uint32_t now = millis();
+  if ((uint32_t)(now - lastMessageMs) &gt;= 1000) {
+    lastMessageMs = now;
+    if (Serial) Serial.println(timerReady ? &quot;Timer LED running&quot; :
+                                           &quot;ERROR: timer allocation failed&quot;);
+  }
+  // Even delay(2000) here would leave this IRQ-driven animation running.
+  // Do not put Serial, delay(), allocation, or blocking I/O in the callback.
+}
+</code></pre></section><section id="method3"><h2>07｜方法三｜PIO state machine PWM</h2><p class="lead">三個狀態機共享七條指令，各驅動一個 GPIO。</p><p>PIO 是可程式化 I/O 外設。CPU 把七條指令載入 PIO0，一顆 LED 分配一個 state machine（SM）；三個 SM 共用指令記憶體，但各自擁有暫存器、計數器、FIFO 和 GPIO 設定。[4][5]</p><p>這裡用 <code>pio_encode_*</code> 在 <code>.ino</code> 內建出指令，不需要另外安裝或執行 <code>pioasm</code>。<code>ledProgram.origin=-1</code> 允許 SDK 安排指令起點，<code>pio_add_program()</code> 會重定位 JMP 目標；wrap 範圍也要加上實際的 offset。</p><p>程序改寫自 Raspberry Pi 官方 PWM 範例，保留 BSD-3-Clause 授權。CPU 每 10 ms 計算亮度並送到各 TX FIFO；PIO 約每 1 ms 取一次最新待用值。FIFO 無新資料時，<code>pull noblock</code> 取回 X 的舊值，持續輸出原占空比，不會等 CPU。[5]</p><div class="callout"><strong>自主的部分是 PWM 載波。</strong>本範例的慢速呼吸包絡仍由 CPU 更新。主程式停頓時，PWM 波形持續，LED 保持當時的平均亮度；要讓整段動畫都不依賴 CPU 更新，可再延伸 PIO＋DMA，但本教材不把它混入入門程式。</div>
+<h3>七條 PIO 指令逐條解釋</h3><div class="tablewrap"><table><tr><th>相對位址</th><th>等價組語</th><th>作用</th></tr><tr><td>0</td><td><code>pull noblock side 0</code></td><td>由 FIFO 取值；若空則 X→OSR。同時令 LED LOW。</td></tr><tr><td>1</td><td><code>mov x, osr</code></td><td>把亮度比較值存入 X，供下個週期保留。</td></tr><tr><td>2</td><td><code>mov y, isr</code></td><td>載入固定 TOP=255，準備倒數。</td></tr><tr><td>3</td><td><code>jmp x!=y 5</code></td><td>尚未到比較值時，跳到 NOP 路徑。</td></tr><tr><td>4</td><td><code>jmp 6 side 1</code></td><td>X=Y 時令 LED HIGH，再跳至倒數指令。</td></tr><tr><td>5</td><td><code>nop</code></td><td>補一個時脈，讓兩條比較路徑同長。</td></tr><tr><td>6</td><td><code>jmp y-- 3</code></td><td>Y 原值非零則遞減並跳回；原值為零則結束，wrap 回 0。</td></tr></table></div>
+<p><strong>ISR 同名但意義不同：</strong>這裡的 <code>pio_isr</code> 是 Input Shift Register（輸入移位暫存器），不是 Interrupt Service Routine（中斷服務程式）。PIO 範例並未配置 PIO 中斷。</p>
+<h3>時脈與實際占空比</h3><p>Y=255…0，共 256 次，每次比較路徑均耗 3 個 PIO clock；加上週期開頭的 3 條指令：</p><div class="eq">N<sub>cycle</sub> = 3 + 3(255 + 1) = 771<br>f<sub>SM</sub> = 771 × 1000 Hz = 771 kHz<br>divider = f<sub>sys</sub> / 771000；150 MHz 時約為 194.5525</div><p>程式由 <code>clock_get_hz(clk_sys)</code> 計算 divider；硬體分頻有量化，實際頻率會非常接近而非數學上完全等於 1 kHz。</p><p>此短程式不是理想的 0～100% PWM：對比較值 q∈[0,255]，HIGH 持續 3q+2 個 clock，故 D=(3q+2)/771。q=255 時約為 <strong>99.48%</strong>，不能達到恆定 HIGH；q=0 仍有短脈衝，所以程式把「亮度=0」改送 <code>0xFFFFFFFF</code>，確保 X 永遠不等於 Y，得到<strong>真正全暗</strong>。亮度數值愈大仍保證愈亮。</p><p>選擇 <code>.side_set 1 opt</code> 時，編碼函式 <code>pio_encode_sideset_opt(1, value)</code> 的 1 是資料位元數；設定函式 <code>sm_config_set_sideset(&amp;c, 2, true, false)</code> 的 2 則包含 optional enable 位元，兩者不可誤寫成相同數值。</p><p>初始化先保持 GPIO 低電位、關閉 SM、設定 TOP 與 X，再同步啟動三個 SM。之後每個通道逐一寫 FIFO，不保證三個亮度值在完全同一個 PWM 邊界生效，但對本 LED 動畫不影響使用。<code>put_blocking</code> 在 FIFO 滿時仍會等待；本例每通道供應 100 筆/s、消耗約 1000 筆/s，正常情況不會累積滿載。若自行停用 SM，就不可繼續無限制寫 FIFO。</p><p><strong>資源：</strong>PIO0 的 3 個 SM、7 條共享指令。分配失敗會保留 LED 熄滅並提示錯誤。整合其他 PIO 函式庫時要檢查資源，也不要再對這三個腳位使用 <code>digitalWrite()</code> 或 <code>analogWrite()</code> 改變輸出功能。</p><h3>完整 Arduino 程式</h3><div class="codebar"><span>03_PIO_PWM.ino</span><button data-copy="code3">複製程式</button><button data-download="code3" data-name="03_PIO_PWM.ino">下載 .ino</button></div><pre><code id="code3">#include &lt;Arduino.h&gt;
+
+// GPIO numbers, not package-pin or board-header numbers.
+// Active HIGH: GPIO -&gt; resistor -&gt; LED anode; LED cathode -&gt; GND.
+constexpr uint8_t LED_PINS[3] = {7, 8, 9}; // Blue, Red, Yellow
+constexpr uint16_t OFFSETS[3] = {0, 256, 128};
+constexpr uint16_t FRAME_COUNT = 384;
+constexpr uint32_t FRAME_MS = 10; // One colour cycle = 3.84 s
+
+// Triangle envelope + approximate gamma 2.0 correction.
+// maximum=64 (software PWM) or 255 (PIO / hardware PWM).
+uint16_t brightness(uint16_t frame, uint16_t offset, uint16_t maximum) {
+  uint16_t p = (frame + offset) % FRAME_COUNT;
+  uint16_t a = (p &lt; 192) ? (192 - p) : (p - 192);
+  return (uint32_t(a) * a * maximum + 18432u) / 36864u;
+}
+
+#include &quot;hardware/pio.h&quot;
+#include &quot;hardware/pio_instructions.h&quot;
+#include &quot;hardware/clocks.h&quot;
+// Seven-instruction PWM engine adapted from Raspberry Pi pico-examples.
+// Copyright (c) 2020 Raspberry Pi (Trading) Ltd. BSD-3-Clause.
+// See THIRD_PARTY_NOTICES.txt in this teaching package.
+constexpr uint32_t PWM_TOP = 255;
+constexpr uint32_t PWM_HZ = 1000;
+constexpr uint32_t CYCLES_PER_PERIOD = 3 + 3 * (PWM_TOP + 1); // 771
+PIO ledPio = pio0;
+int sms[3] = {-1, -1, -1};
+uint programOffset = 0;
+bool pioReady = false;
+uint16_t instructions[7];
+pio_program_t ledProgram = {};
+
+bool startPIO() {
+  // .side_set 1 opt: 1 data bit + 1 optional-enable bit =&gt; count=2.
+  instructions[0] = pio_encode_pull(false, false) | pio_encode_sideset_opt(1, 0);
+  instructions[1] = pio_encode_mov(pio_x, pio_osr);
+  instructions[2] = pio_encode_mov(pio_y, pio_isr);
+  instructions[3] = pio_encode_jmp_x_ne_y(5);
+  instructions[4] = pio_encode_jmp(6) | pio_encode_sideset_opt(1, 1);
+  instructions[5] = pio_encode_nop();
+  instructions[6] = pio_encode_jmp_y_dec(3);
+  ledProgram.instructions = instructions;
+  ledProgram.length = 7;
+  ledProgram.origin = -1; // Relocatable; pio_add_program adjusts JMP addresses
+  if (!pio_can_add_program(ledPio, &amp;ledProgram)) return false;
+  for (uint8_t i = 0; i &lt; 3; ++i) {
+    sms[i] = pio_claim_unused_sm(ledPio, false);
+    if (sms[i] &lt; 0) {
+      for (uint8_t j = 0; j &lt; i; ++j) pio_sm_unclaim(ledPio, sms[j]);
+      return false;
+    }
+  }
+  programOffset = pio_add_program(ledPio, &amp;ledProgram);
+  uint32_t enableMask = 0;
+  for (uint8_t i = 0; i &lt; 3; ++i) {
+    uint sm = (uint)sms[i];
+    uint pin = LED_PINS[i];
+    pio_sm_config c = pio_get_default_sm_config();
+    sm_config_set_wrap(&amp;c, programOffset, programOffset + 6);
+    sm_config_set_sideset(&amp;c, 2, true, false);
+    sm_config_set_sideset_pins(&amp;c, pin);
+    sm_config_set_clkdiv(&amp;c, (float)clock_get_hz(clk_sys) /
+                             (PWM_HZ * CYCLES_PER_PERIOD));
+    pio_sm_init(ledPio, sm, programOffset, &amp;c); // SM remains disabled
+    pio_sm_set_pins_with_mask(ledPio, sm, 0, 1u &lt;&lt; pin);
+    pio_sm_set_consecutive_pindirs(ledPio, sm, pin, 1, true);
+    pio_gpio_init(ledPio, pin); // GPIO output mux now belongs to PIO
+    // ISR (Input Shift Register, NOT Interrupt Service Routine) stores TOP.
+    pio_sm_put_blocking(ledPio, sm, PWM_TOP);
+    pio_sm_exec(ledPio, sm, pio_encode_pull(false, true));
+    pio_sm_exec(ledPio, sm, pio_encode_mov(pio_isr, pio_osr));
+    // X=-1 cannot match Y=255..0, giving exact OFF on an empty FIFO.
+    pio_sm_exec(ledPio, sm, pio_encode_mov_not(pio_x, pio_null));
+    uint32_t d = brightness(0, OFFSETS[i], PWM_TOP);
+    pio_sm_put_blocking(ledPio, sm, d == 0 ? 0xffffffffu : d);
+    enableMask |= 1u &lt;&lt; sm;
+  }
+  pio_enable_sm_mask_in_sync(ledPio, enableMask);
+  return true;
+}
+
+void setup() {
+  Serial.begin(115200);
+  for (uint8_t pin : LED_PINS) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
+  pioReady = startPIO();
+}
+
+void loop() {
+  if (!pioReady) {
+    if (Serial) Serial.println(&quot;ERROR: PIO0 needs 3 free SMs and 7 instructions&quot;);
+    delay(1000);
+    return;
+  }
+  static uint16_t frame = 0;
+  static uint32_t lastFrameMs = millis();
+  uint32_t now = millis();
+  uint32_t steps = (uint32_t)(now - lastFrameMs) / FRAME_MS;
+  if (steps == 0) return;
+  lastFrameMs += steps * FRAME_MS;
+  frame = (frame + steps % FRAME_COUNT) % FRAME_COUNT;
+  for (uint8_t i = 0; i &lt; 3; ++i) {
+    uint32_t d = brightness(frame, OFFSETS[i], PWM_TOP);
+    // 100 writes/s/channel; FIFO is drained about 1000 times/s/channel.
+    pio_sm_put_blocking(ledPio, (uint)sms[i], d == 0 ? 0xffffffffu : d);
+  }
+  // CPU supplies the slow envelope; PIO autonomously repeats the last PWM.
+  // No new FIFO data =&gt; pull noblock copies X into OSR (no stall).
+}
+</code></pre></section><section id="method4"><h2>08｜補充方法四｜millis 非阻塞狀態機</h2><p class="lead">八個開／關圖樣，形成招牌式跑馬燈。</p><p>這個範例刻意只做數位明滅，用最簡單的狀態機呈現另一類霓虹效果：藍 → 藍紅 → 紅 → 紅黃 → 黃 → 黃藍 → 全亮 → 全暗；每步 180 ms，完整循環 1.44 s。</p><p>每次 <code>loop()</code> 比較經過時間，未到時間立刻返回；到時間才改圖樣。<code>millis()</code> 提供時基，但這不是使用者自行註冊 timer callback，燈號更新仍靠主程式輪詢。</p><p><code>(uint32_t)(now-lastStepMs)</code> 利用無號減法處理 millis 回捲；不是用 <code>now &gt; last+interval</code>。<code>steps</code> 能跳過因主程式延誤而錯過的舊圖樣，保持整體節奏；如果幾秒才執行一次 loop，肉眼仍會看到動畫停頓，非阻塞不等於自主執行。此寫法假設沒有超過整個 32 位元計時週期都不更新。</p><p><strong>適合教：</strong>陣列、位元圖樣、有限狀態機、非阻塞排程。它不是漸變亮度版本；若要在這種排程架構加入柔和呼吸，就看下一例。</p><h3>完整 Arduino 程式</h3><div class="codebar"><span>04_Millis_NeonChase.ino</span><button data-copy="code4">複製程式</button><button data-download="code4" data-name="04_Millis_NeonChase.ino">下載 .ino</button></div><pre><code id="code4">#include &lt;Arduino.h&gt;
+
+constexpr uint8_t LED_PINS[3] = {7, 8, 9}; // Blue, Red, Yellow; active HIGH
+// Bit 0=Blue, bit 1=Red, bit 2=Yellow. These are channel bits, NOT GPIO bits.
+constexpr uint8_t PATTERN[] = {
+  0b001, 0b011, 0b010, 0b110, 0b100, 0b101, 0b111, 0b000
+};
+constexpr uint32_t STEP_MS = 180;
+constexpr uint8_t PATTERN_COUNT = sizeof(PATTERN) / sizeof(PATTERN[0]);
+uint8_t phase = 0;
+uint32_t lastStepMs = 0;
+
+void showPattern(uint8_t bits) {
+  for (uint8_t i = 0; i &lt; 3; ++i)
+    digitalWrite(LED_PINS[i], (bits &amp; (1u &lt;&lt; i)) ? HIGH : LOW);
+}
+
+void setup() {
+  for (uint8_t pin : LED_PINS) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+  }
+  showPattern(PATTERN[phase]);
+  lastStepMs = millis();
+}
+
+void loop() {
+  uint32_t now = millis();
+  uint32_t steps = (uint32_t)(now - lastStepMs) / STEP_MS;
+  if (steps != 0) {
+    lastStepMs += steps * STEP_MS;
+    phase = (phase + steps % PATTERN_COUNT) % PATTERN_COUNT;
+    showPattern(PATTERN[phase]);
+  }
+  // Other nonblocking work goes here: buttons, serial commands, sensors.
+  // No delay(), no busy wait. This version intentionally uses ON/OFF only.
+}
+</code></pre></section><section id="method5"><h2>09｜補充方法五｜硬體 PWM＋millis</h2><p class="lead">用 Arduino analogWrite 產生呼吸燈。</p><p><code>analogWriteFreq(1000)</code> 與 <code>analogWriteRange(255)</code> 設定 PWM；每 10 ms 只需更新三個通道的比較值。<code>analogWrite()</code> 在這個 Arduino-Pico 核心使用 PWM 外設，不是 DAC 輸出連續類比電壓。[2]</p><p>GPIO7 對應 PWM slice 3 的 B 通道；GPIO8 與 GPIO9 分別為 slice 4 的 A、B 通道。GPIO8/9 共用 slice 的頻率與計數器，但占空比可以不同。本例三路都用 1 kHz，因此沒有頻率衝突。</p><p>range=255 對應 0～255 的設定值；core 負責映射，0 為全暗，255 為全亮。不要把這個 API 參數直接當成 PWM 暫存器 TOP=255；實際 divider/TOP 由 core 決定。</p><p><strong>適合教：</strong>把「何時更新亮度」與「誰產生 PWM」分開。單純做 LED 呼吸燈，這個版本最短且 CPU 負擔低。主程式停頓時，硬體仍維持 PWM，但呼吸動畫會停在當前亮度；恢復執行後跳到依時間應有的影格。</p><h3>完整 Arduino 程式</h3><div class="codebar"><span>05_HardwarePWM_Breathe.ino</span><button data-copy="code5">複製程式</button><button data-download="code5" data-name="05_HardwarePWM_Breathe.ino">下載 .ino</button></div><pre><code id="code5">#include &lt;Arduino.h&gt;
+
+// GPIO numbers, not package-pin or board-header numbers.
+// Active HIGH: GPIO -&gt; resistor -&gt; LED anode; LED cathode -&gt; GND.
+constexpr uint8_t LED_PINS[3] = {7, 8, 9}; // Blue, Red, Yellow
+constexpr uint16_t OFFSETS[3] = {0, 256, 128};
+constexpr uint16_t FRAME_COUNT = 384;
+constexpr uint32_t FRAME_MS = 10; // One colour cycle = 3.84 s
+
+// Triangle envelope + approximate gamma 2.0 correction.
+// maximum=64 (software PWM) or 255 (PIO / hardware PWM).
+uint16_t brightness(uint16_t frame, uint16_t offset, uint16_t maximum) {
+  uint16_t p = (frame + offset) % FRAME_COUNT;
+  uint16_t a = (p &lt; 192) ? (192 - p) : (p - 192);
+  return (uint32_t(a) * a * maximum + 18432u) / 36864u;
+}
+
+constexpr uint16_t PWM_MAX = 255;
+constexpr uint32_t PWM_HZ = 1000;
+
+void setup() {
+  analogWriteFreq(PWM_HZ);
+  analogWriteRange(PWM_MAX); // Core maps 0..255 to duty 0..100%
+  for (uint8_t i = 0; i &lt; 3; ++i) {
+    pinMode(LED_PINS[i], OUTPUT);
+    analogWrite(LED_PINS[i], brightness(0, OFFSETS[i], PWM_MAX));
+  }
+}
+
+void loop() {
+  static uint16_t frame = 0;
+  static uint32_t lastFrameMs = millis();
+  uint32_t now = millis();
+  uint32_t steps = (uint32_t)(now - lastFrameMs) / FRAME_MS;
+  if (steps == 0) return;
+  lastFrameMs += steps * FRAME_MS;
+  frame = (frame + steps % FRAME_COUNT) % FRAME_COUNT;
+  for (uint8_t i = 0; i &lt; 3; ++i)
+    analogWrite(LED_PINS[i], brightness(frame, OFFSETS[i], PWM_MAX));
+  // Hardware keeps producing PWM between updates. Do not digitalWrite()
+  // these pins while PWM should remain active: that changes the pin mux.
+}
+</code></pre></section><section id="experiments"><h2>10｜課堂實驗與觀察問題</h2><ol><li><strong>建立基本現象：</strong>依序上傳 1→2→3→4→5，確認 GP7 藍、GP8 紅、GP9 黃。呼吸版觀察亮度峰值是否按藍→紅→黃輪轉。</li><li><strong>量測載波：</strong>以示波器／邏輯分析儀觀察 GPIO 對 GND。為方便比較，可暫時把亮度固定在軟體 PWM 32/64、硬體 PWM 128/255、PIO 比較值 128。預期週期分別約 3.2 ms、1 ms、1 ms；PIO 在 q=128 時 D=386/771，約 50.06%。</li><li><strong>讓主程式忙碌：</strong>在各範例 <code>loop()</code> 的<strong>最前面</strong>暫時加入 <code>delay(2000);</code>。若加在 <code>if (steps == 0) return;</code> 後面某處，可能改變實驗執行頻率，因此統一放開頭。</li><li><strong>比較兩種速度：</strong>將方法 5 的 PWM_HZ 改為 2000，呼吸仍是 3.84 s；再把 FRAME_MS 改為 5，呼吸縮為 1.92 s。方法 2 改影格時間時要同步修改 <code>TICKS_PER_FRAME</code>，它才是 IRQ 動畫的真實分頻。</li><li><strong>比較 gamma：</strong>暫改亮度函式為 <code>(uint32_t(a) * maximum + 96u) / 192u</code>，取消平方。觀察低亮區與高亮區的視覺差別。</li></ol>
+<div class="tablewrap"><table><tr><th>delay(2000) 實驗</th><th>預期觀察</th><th>解釋</th></tr><tr><td>while</td><td>大部分時間保持某個數位圖樣，只偶爾執行一段 PWM</td><td>前景停止切換腳位</td></tr><tr><td>timer IRQ</td><td>呼吸仍持續</td><td>亮度與 PWM 都在 IRQ 中推進</td></tr><tr><td>PIO</td><td>穩定亮度維持約 2 秒後跳變</td><td>PIO 仍輸出載波，CPU 只偶爾更新包絡</td></tr><tr><td>millis 跑馬燈</td><td>圖樣停住後跳到較後面的步驟</td><td>以 steps 略過已錯過的步驟</td></tr><tr><td>硬體 PWM</td><td>穩定亮度維持約 2 秒後跳變</td><td>PWM 外設自主，包絡由 CPU 更新</td></tr></table></div><p>討論題：為什麼只把 <code>delay()</code> 換成 <code>millis()</code>，不代表 LED 已由硬體自主驅動？為什麼 PIO 使用的 ISR 不是中斷函式？為什麼主程式有 <code>while</code> 不代表一定會關閉中斷？</p></section>
+<section id="faq"><h2>11｜排錯與參數調整</h2><div class="tablewrap"><table><tr><th>現象</th><th>檢查／修正</th></tr><tr><td>找不到 hardware/pio.h 或 pico/time.h</td><td>確認選的是 Earle Philhower Arduino-Pico 核心與 RP2350 板型；其他 Arduino core 不保證支援這些 API。</td></tr><tr><td>setup / loop 重複定義</td><td>只開一個範例資料夾，且資料夾內只有該範例 .ino。</td></tr><tr><td>完全不亮</td><td>先檢查 GPIO 編號、LED 極性、共同地與串聯電阻；timer／PIO 版查看序列錯誤。不要把 GPIO7 誤接成封裝 pin 7。</td></tr><tr><td>應該熄滅時反而最亮</td><td>板子可能低電位點亮，依接線章節反轉一次輸出極性。</td></tr><tr><td>藍燈特別暗</td><td>藍 LED 的順向壓降與發光效率不同，確認型號、電流，再調整各通道電阻或最大亮度。</td></tr><tr><td>timer 版閃爍／被其他工作干擾</td><td>檢查是否有長 IRQ、關中斷區段、Flash 寫入或額外高頻回呼；改用方法 5 可把載波交給 PWM 外設。</td></tr><tr><td>PIO 分配失敗</td><td>PIO0 需要 3 個空閒 SM 與 7 條指令空間。先單獨跑範例，再檢查其他函式庫占用。</td></tr><tr><td>PIO 亮度=0 仍微亮</td><td>確認仍保留 d==0 時送 0xFFFFFFFF 的處理；直接送比較值 0 會有極短脈衝。</td></tr><tr><td>硬體 PWM／PIO 跑一陣子停止</td><td>檢查是否又用 pinMode、digitalWrite 或其他外設接管相同 GPIO。</td></tr><tr><td>想加快軟體 PWM</td><td>縮短 SLOT_US 會提高 CPU／IRQ 負載。timer 版也要重算 TICKS_PER_FRAME，保持「時槽數×時槽時間=影格時間」。</td></tr></table></div><p>本教材使用一個 CPU core 的 Arduino 前景與 SDK IRQ，沒有定義 <code>setup1()</code> 或 <code>loop1()</code>。雙核心與 DMA 可作下一階段課題；教學重點是先建立可量測的時間模型。</p></section><section id="verification"><h2>12｜驗證狀態與實機檢查</h2><p class="ok">五份 Sketch 均已在 Arduino-Pico 5.6.0 完成實際交叉編譯與連結。</p><p>編譯目標：Generic RP2350、RP2350A variant、2MB Flash、ARM、150 MHz；使用 Arduino CLI 驗證與 Arduino IDE 相同核心。這確認程式及 SDK API 可編譯，不代表已在您的電路板燒錄測試。</p><p>另外以軟體模型核對了亮度範圍、三色峰值順序、無號時間差跨越回捲、軟體 PWM 的 0/100% 邊界，以及 PIO 的 771-clock 週期、全暗 sentinel 與占空比公式。</p><p><strong>尚未完成實機量測：</strong>LED 極性與實際電流、板級 USB 燒錄、PWM 抖動、timer IRQ 負載與實際亮度均需在您的板子上確認。文中頻率與 CPU 負載示例皆為理論／設定值，不冒充示波器結果。</p></section>
+<section id="refs"><h2>13｜官方參考資料與授權</h2><p>下列資料用於核對 API 與硬體行為；<code>latest</code> 內容會隨核心更新，課堂重現請以本教材的 5.6.0 編譯版本為準。</p><ol><li><a href="https://arduino-pico.readthedocs.io/en/latest/install.html">Arduino-Pico：安裝與上傳</a>；<a href="https://github.com/earlephilhower/arduino-pico/tree/5.6.0">Arduino-Pico 5.6.0 原始碼</a>（含 board 設定、GPIO 與 PWM 實作）。</li><li><a href="https://arduino-pico.readthedocs.io/en/latest/analog.html">Arduino-Pico：analogWrite、analogWriteFreq、analogWriteRange</a>。</li><li><a href="https://www.raspberrypi.com/documentation/pico-sdk/high_level.html">Pico SDK High Level APIs：repeating timer 與 alarm pool</a>。</li><li><a href="https://www.raspberrypi.com/documentation/pico-sdk/hardware.html">Pico SDK Hardware APIs：GPIO、PIO、PWM、clock</a>。</li><li><a href="https://github.com/raspberrypi/pico-examples/tree/master/pio/pwm">Raspberry Pi 官方 PIO PWM 範例</a>：七條指令與 FIFO 保留亮度的來源。</li><li><a href="https://www.raspberrypi.com/products/rp2350/">Raspberry Pi：RP2350 系列與 RP2354A 封裝內 Flash 規格</a>；<a href="https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf">RP2350 Datasheet</a>。</li></ol><details><summary>PIO 範例來源授權（BSD-3-Clause）</summary><pre>PIO PWM engine adapted from Raspberry Pi pico-examples/pio/pwm/pwm.pio
+https://github.com/raspberrypi/pico-examples/tree/master/pio/pwm
+Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+SPDX-License-Identifier: BSD-3-Clause
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS &quot;AS IS&quot; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre></details></section></main></div><footer>RP2354A LED 編程教材 · 五個獨立 Sketch · 離線可閱讀、複製與下載</footer><script>
+const lamps=[0,1,2].map(i=>document.getElementById('lamp'+i));
+const phase=document.getElementById('phase');let running=true,frame=0,start=performance.now();
+function show(f){frame=f;phase.value=f;document.getElementById('frameOut').textContent=f+' / 383';[0,256,128].forEach((off,i)=>{const a=Math.abs(((f+off)%384)-192);const d=Math.floor((a*a*255+18432)/36864);lamps[i].style.opacity=.08+.92*d/255;document.getElementById('d'+i).textContent=d+' / 255';});}
+document.getElementById('toggle').onclick=()=>{running=!running;document.getElementById('toggle').textContent=running?'暫停動畫':'播放動畫';if(running)start=performance.now()-frame*10;};
+phase.oninput=()=>{running=false;document.getElementById('toggle').textContent='播放動畫';show(Number(phase.value));};
+function animate(t){if(running)show(Math.floor((t-start)/10)%384);requestAnimationFrame(animate);}show(0);requestAnimationFrame(animate);
+for(const b of document.querySelectorAll('[data-copy]'))b.onclick=async()=>{const text=document.getElementById(b.dataset.copy).textContent;try{await navigator.clipboard.writeText(text);b.textContent='已複製';}catch(e){const t=document.createElement('textarea');t.value=text;document.body.append(t);t.select();const ok=document.execCommand('copy');t.remove();b.textContent=ok?'已複製':'請選取程式手動複製';}setTimeout(()=>b.textContent='複製程式',2200);};
+for(const b of document.querySelectorAll('[data-download]'))b.onclick=()=>{const content=document.getElementById(b.dataset.download).textContent;const url=URL.createObjectURL(new Blob([content],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=b.dataset.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+</script></body></html>
