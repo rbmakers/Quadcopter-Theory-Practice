@@ -1,0 +1,11 @@
+; Reference listing only. Sketch encodes these same five instructions with SDK.
+; No pioasm installation required by the user.
+.program capture_two_pins
+    pull block
+    mov x, osr
+sample:
+    in pins, 2
+    jmp x-- sample
+    irq wait 0
+; Host disables SM before clearing flag 0. Does not enable a PIO CPU IRQ.
+; IN+JMP = two cycles/sample. SM clock=2MHz gives 1MHz sampling.
