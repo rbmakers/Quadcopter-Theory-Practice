@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RP2350 PIO 討論整理</title>
+<style>
+:root{--bg:#f2f5f7;--panel:#fff;--ink:#14212b;--mute:#5b6b78;--line:#d5dde3;--acc:#0e7c86;--warn:#a5610f;--code:#eaf0f3}
+@media (prefers-color-scheme:dark){:root{--bg:#10171c;--panel:#182229;--ink:#e3ebf0;--mute:#93a4b1;--line:#2b3943;--acc:#4fc3cd;--warn:#e2a24a;--code:#0d1418}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:32px 20px 64px;display:grid;grid-template-columns:200px minmax(0,1fr);gap:40px}
+nav{position:sticky;top:24px;align-self:start;font-size:14px}
+nav b{display:block;margin-bottom:8px}
+nav a{display:block;color:var(--mute);text-decoration:none;padding:4px 0 4px 10px;border-left:2px solid var(--line)}
+nav a:hover,nav a:focus-visible{color:var(--acc);border-left-color:var(--acc);outline:none}
+header{grid-column:1/-1}
+h1{font-size:2.1rem;line-height:1.25;margin:0 0 8px;letter-spacing:.01em}
+.lead{color:var(--mute);max-width:46em;margin:0}
+h2{font-size:1.4rem;margin:2.6rem 0 .6rem;padding-top:1rem;border-top:2px solid var(--acc)}
+h3{font-size:1.05rem;margin:1.6rem 0 .4rem}
+p{margin:.6rem 0;max-width:46em}
+main>section>p,main>section>ul{max-width:46em}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--panel);margin:.8rem 0}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--code);font-weight:600}
+.scroll{overflow-x:auto}
+pre,code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+code{background:var(--code);padding:1px 5px;border-radius:3px;font-size:.9em}
+pre{background:var(--code);border:1px solid var(--line);padding:12px 14px;overflow-x:auto;font-size:13.5px;line-height:1.6;margin:.8rem 0;border-radius:4px}
+pre code{background:none;padding:0}
+.note{border-left:4px solid var(--warn);background:var(--panel);padding:8px 14px;margin:1rem 0;font-size:14.5px;max-width:46em}
+.key{border-left:4px solid var(--acc);background:var(--panel);padding:8px 14px;margin:1rem 0;max-width:46em}
+ul{padding-left:1.3em}li{margin:.25rem 0}
+@media (max-width:820px){.wrap{grid-template-columns:1fr}nav{position:static;display:flex;flex-wrap:wrap;gap:4px 14px}nav b{width:100%}nav a{border:0;padding:0}}
+@media print{nav{display:none}.wrap{display:block}}
+.m{font-family:"STIX Two Math","Cambria Math","Times New Roman",serif;font-style:italic;white-space:nowrap}
+.m sub,.m sup{font-size:.75em;line-height:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>RP2350 PIO 討論整理</h1>
+<p class="lead">整理範圍:PIO 硬體結構與狀態機、FSM 觀點、SPI / I²C / UART / DMA / DSHOT 實作、PIO 與內建周邊及軟體 bit-bang 的取捨。數值以 <span class="m">f<sub>sys</sub>=150</span> MHz 為例。</p>
+</header>
+
+<nav aria-label="目錄">
+<b>目錄</b>
+<a href="#hw">1 硬體結構</a>
+<a href="#isa">2 指令集</a>
+<a href="#sm">3 狀態機行為</a>
+<a href="#fsm">4 FSM 觀點</a>
+<a href="#proto">5 協定實作</a>
+<a href="#dma">6 DMA</a>
+<a href="#dshot">7 DSHOT</a>
+<a href="#value">8 PIO 的價值</a>
+<a href="#choose">9 選擇順序</a>
+<a href="#todo">10 待查證</a>
+</nav>
+
+<main>
+
+<section id="hw">
+<h2>1 硬體結構</h2>
+<p>RP2350 有 <b>3 個 PIO 區塊</b>(PIO0/1/2),每塊 4 個狀態機(SM),共 12 個 SM。RP2040 為 2 塊、8 個 SM。</p>
+<h3>每個區塊共用</h3>
+<ul>
+<li><b>指令記憶體</b>:32 個 16-bit 槽位,4 個 SM 共用,各 SM 用自己的 PC 與 wrap 範圍取用。</li>
+<li><b>IRQ flags</b>:8 個。0–3 可送到系統中斷,4–7 僅供 SM 之間同步。</li>
+<li><b>輸入同步器</b>:每腳 2-flop,可用 <code>INPUT_SYNC_BYPASS</code> 略過,省 2 個週期,但要自行處理亞穩態。</li>
+<li><b>GPIO 輸出仲裁</b>:多個 SM 驅動同一腳時,編號較高者優先。</li>
+</ul>
+<h3>每個 SM 私有</h3>
+<div class="scroll"><table>
+<tr><th>元件</th><th>說明</th></tr>
+<tr><td>PC</td><td>5-bit,範圍由 <code>WRAP_TOP</code> / <code>WRAP_BOTTOM</code> 控制</td></tr>
+<tr><td>X、Y</td><td>32-bit 暫存器,計數與比較</td></tr>
+<tr><td>OSR + 移位計數器</td><td><code>OUT</code> 由此移出;<code>PULL</code> 從 TX FIFO 載入</td></tr>
+<tr><td>ISR + 移位計數器</td><td><code>IN</code> 移入;<code>PUSH</code> 送入 RX FIFO</td></tr>
+<tr><td>時脈除頻器</td><td>16.8 定點數:<span class="m">f<sub>SM</sub>=f<sub>sys</sub>/(INT+FRAC/256)</span></td></tr>
+<tr><td>FIFO</td><td>TX / RX 各 4 字,可 join 成單向 8 字(<code>FJOIN_TX</code> / <code>FJOIN_RX</code>)</td></tr>
+<tr><td>腳位映射</td><td>IN / OUT / SET / SIDESET 各自設定</td></tr>
+</table></div>
+</section>
+
+<section id="isa">
+<h2>2 指令集</h2>
+<p>只有 9 條指令,全為 16-bit:<code>[15:13] opcode | [12:8] delay/side-set | [7:0] operands</code></p>
+<div class="scroll"><table>
+<tr><th>opcode</th><th>指令</th><th>功能</th></tr>
+<tr><td>000</td><td>JMP</td><td>條件跳躍(<code>!X</code>、<code>X--</code>、<code>!Y</code>、<code>Y--</code>、<code>X!=Y</code>、<code>PIN</code>、<code>!OSRE</code>)</td></tr>
+<tr><td>001</td><td>WAIT</td><td>等待 GPIO / PIN / IRQ 電位</td></tr>
+<tr><td>010</td><td>IN</td><td>從來源移入 ISR</td></tr>
+<tr><td>011</td><td>OUT</td><td>從 OSR 移出到目的</td></tr>
+<tr><td>100</td><td>PUSH / PULL</td><td>ISR→RX FIFO / TX FIFO→OSR</td></tr>
+<tr><td>101</td><td>MOV</td><td>暫存器搬移,可反相或位元反轉</td></tr>
+<tr><td>110</td><td>IRQ</td><td>設定 / 清除 / 等待 IRQ flag</td></tr>
+<tr><td>111</td><td>SET</td><td>寫入 5-bit 立即值</td></tr>
+</table></div>
+<p>RP2350 新增:<code>MOV PINDIRS</code>、RX FIFO 隨機存取(<code>MOV rxfifo[y]</code>,配合 <code>FJOIN_RX_GET/PUT</code>)、<code>IRQ PREV/NEXT</code>(相鄰區塊間)與 <code>GPIOBASE</code> 腳位窗口。</p>
+</section>
+
+<section id="sm">
+<h2>3 狀態機每週期行為</h2>
+<pre><code>if (!SM_ENABLE)          → 保持
+else if (delay_cnt > 0)  → delay_cnt--            // Delay 狀態
+else:
+    instr = imem[PC]
+    Side-set 在指令第一個週期生效
+    if (stall_condition) → 保持 PC,下週期重評估  // Stall 狀態
+    else:
+        執行指令
+        PC = jmp_taken ? target
+           : (PC == WRAP_TOP ? WRAP_BOTTOM : PC + 1)
+        delay_cnt = delay 欄位</code></pre>
+<ul>
+<li>每條指令 1 個 SM 週期,總耗時 = 1 + delay,時序完全可預測。</li>
+<li>Delay 與 side-set 共用 5 bit:side-set 佔 <span class="m">n</span> 位元時,最大 delay = <span class="m">2<sup>5-n</sup>-1</span>。</li>
+<li>Side-set 在指令開頭生效,<b>即使指令 stall 也是</b>;delay 則在指令完成後才開始倒數。</li>
+<li>Stall 條件:<code>PULL</code> 遇 TX 空、<code>PUSH</code> 遇 RX 滿、<code>WAIT</code> 未滿足、<code>IRQ WAIT</code>、autopull/autopush 阻塞。</li>
+<li>Wrap 不耗額外週期,是「零開銷迴圈」的來源。</li>
+</ul>
+<h3>時序推導</h3>
+<p><span class="m">T<sub>inst</sub>=(DIV<sub>INT</sub>+DIV<sub>FRAC</sub>/256)/f<sub>sys</sub></span>。小數除頻會在整數與整數+1 個 sys 週期間交替,邊沿有最多 1 個 sys 週期(6.67 ns)抖動;要精確邊沿就選能讓除數為整數(或可精確表示)的組合。</p>
+<h3>除錯</h3>
+<p><code>SMx_ADDR</code> 讀 PC,<code>SMx_INSTR</code> 讀/寫(強制插入)指令,<code>FSTAT</code> / <code>FLEVEL</code> / <code>FDEBUG</code> 檢查 FIFO 與 stall/overflow。</p>
+</section>
+
+<section id="fsm">
+<h2>4 用 FSM 觀點看 PIO</h2>
+<h3>狀態機是否簡化邏輯</h3>
+<p>FSM 五元組 <span class="m">M=(S,Σ,Λ,δ,ω)</span>。它簡化的是<b>推理</b>,不一定是行數:把隱含在旗標與巢狀 <code>if</code> 的控制流,變成可列舉、可驗證的表格。</p>
+<ul>
+<li>非法狀態在結構上不可表示(<span class="m">n</span> 個旗標有 <span class="m">2<sup>n</sup></span> 組合,合法的往往很少)。</li>
+<li>可窮舉檢查:每個(狀態, 事件)是否有定義、有無不可達狀態或死結。</li>
+<li>每次轉移成本固定,最壞執行時間可算。</li>
+</ul>
+<p>限制:狀態爆炸(平行組合為乘積)、數值運算(PID、EKF)不適合、純 FSM 只能辨識正規語言(要計數就得加擴充狀態)。</p>
+
+<h3>PIO 與 FSM 的對應</h3>
+<div class="scroll"><table>
+<tr><th>FSM 概念</th><th>PIO 對應</th></tr>
+<tr><td>狀態 <span class="m">s</span></td><td><b>PC</b>(最多 32 個)</td></tr>
+<tr><td>轉移 <span class="m">δ</span></td><td>指令記憶體內容(<code>JMP</code> / <code>WAIT</code> 決定下一個 PC)</td></tr>
+<tr><td>輸入 <span class="m">σ</span></td><td>GPIO、FIFO 狀態、IRQ flag</td></tr>
+<tr><td>輸出 <span class="m">ω</span></td><td>side-set、<code>OUT</code>、<code>SET</code></td></tr>
+<tr><td>擴充狀態</td><td>X、Y、OSR、ISR(嚴格說是 EFSM / FSMD)</td></tr>
+</table></div>
+<div class="key"><b>PIO 程式「依輸入切換狀態」對一半:</b>狀態的載體是 PC,不是獨立的 <code>state</code> 變數。多數 PIO 程式是「線性流程 + 迴圈」的退化形式,真正多路分支的很少。</div>
+<ul>
+<li><b>阻塞式</b>:<code>WAIT</code> / <code>PULL block</code> / <code>PUSH block</code>,原地 stall 等事件,最省指令。</li>
+<li><b>輪詢式</b>:<code>JMP</code> 條件跳躍,每週期檢查,可同時處理多個條件。</li>
+</ul>
+<h3>與軟體 FSM 的三個差異</h3>
+<ul>
+<li><b>時序是狀態的一部分</b>:每個狀態停多久是寫死的。</li>
+<li><b>沒有事件佇列</b>:PIO 主動採樣輸入,你沒看的那個週期變化就會漏掉。</li>
+<li><b>狀態上限 32</b>:靠 X/Y、OSR/ISR 承擔資料,把狀態數壓到最低(例如 UART 用 <code>Y</code> 數 8 次,狀態數由 <span class="m">O(n)</span> 降為 <span class="m">O(1)</span>)。</li>
+</ul>
+<p>複雜協定(如 I²C)常用 <code>OUT EXEC</code> 讓 CPU 透過 FIFO 餵指令,把複雜的轉移邏輯交回 CPU,PIO 只負責時序精確的那一小段。</p>
+</section>
+
+<section id="proto">
+<h2>5 協定實作</h2>
+<p>心智模型:每 bit 佔 <span class="m">N</span> 個 SM 週期,則 <span class="m">f<sub>SM</sub>=N· f<sub>bit</sub></span>,<span class="m">DIV=f<sub>sys</sub>/f<sub>SM</sub></span>。</p>
+<div class="scroll"><table>
+<tr><th>協定</th><th>N(週期/bit)</th><th>範例</th><th><span class="m">f<sub>SM</sub></span></th><th>DIV @150 MHz</th></tr>
+<tr><td>UART</td><td>8</td><td>115200 baud</td><td>921.6 kHz</td><td>162.76(FRAC=195,有抖動)</td></tr>
+<tr><td>SPI mode 0</td><td>4</td><td>10 MHz SCK</td><td>40 MHz</td><td>3.75(精確)</td></tr>
+<tr><td>I²C(SDK 版)</td><td>32</td><td>400 kHz</td><td>12.8 MHz</td><td>11.71875(精確)</td></tr>
+<tr><td>DSHOT600</td><td>8</td><td>600 kbit/s</td><td>4.8 MHz</td><td>31.25(精確)</td></tr>
+</table></div>
+
+<h3>UART</h3>
+<pre><code>.program uart_rx
+start:
+    wait 0 pin 0         ; 等 start bit
+    set  x, 7    [10]    ; 延遲 12 cycles,對準 bit0 中心
+bitloop:
+    in   pins, 1         ; 取樣
+    jmp  x-- bitloop [6] ; 每圈 8 cycles = 1 bit
+    jmp  pin good_stop   ; stop bit 應為高
+    irq  4 rel           ; framing error
+    wait 1 pin 0
+    jmp  start
+good_stop:
+    push</code></pre>
+<p>核心是先延遲 1.5 bit 時間,使取樣點落在每個 bit 中央。TX 用 side-set 驅動腳位、<code>out pins,1</code> 移出資料。</p>
+
+<h3>SPI(mode 0)</h3>
+<pre><code>.program spi_cpha0
+.side_set 1
+    out pins, 1  side 0 [1]   ; SCK 低:更新 MOSI
+    in  pins, 1  side 1 [1]   ; SCK 高:取樣 MISO</code></pre>
+<ul>
+<li>每 bit 4 cycles,<span class="m">f<sub>SCK</sub>=f<sub>SM</sub>/4</span>。</li>
+<li>TX FIFO 空時 <code>out</code> stall,side-set 已生效,SCK 停在低電位,正好是 CPOL=0 閒置。</li>
+<li>設定:MSB 優先、autopull / autopush、閾值 8。</li>
+<li>高速時輸入同步器 2 週期延遲是頻率上限主因,可 bypass 並自行補償相位。</li>
+<li>CPOL / CPHA 每種模式要寫不同程式。</li>
+</ul>
+
+<h3>I²C</h3>
+<p>PIO 沒有開汲極輸出,做法是把輸出鎖存固定為 0,靠切換 <b>pindirs</b> 模擬:方向=輸出 → 拉低;方向=輸入 → 釋放,由上拉電阻拉高。</p>
+<pre><code>set  pins, 0        ; 輸出鎖存 = 0(一次性)
+set  pindirs, 1     ; 拉低
+set  pindirs, 0     ; 釋放
+out  pindirs, 1     ; 資料位元寫入方向(資料需先反相)
+wait 1 pin, 1       ; clock stretching:等 SCL 真的變高</code></pre>
+<p>SDK 版每 bit 32 cycles,START / STOP / 重複 START 由 CPU 把指令字塞進 FIFO,透過 <code>OUT EXEC</code> 執行。SDK 版要求 SCL 腳 = SDA 腳 + 1。</p>
+</section>
+
+<section id="dma">
+<h2>6 DMA</h2>
+<p>PIO 本身不搬資料,靠 DREQ:TX FIFO 未滿時 <code>DREQ_PIOx_TXy</code> 有效,RX FIFO 非空時 <code>DREQ_PIOx_RXy</code> 有效,DMA 依硬體節拍搬運,CPU 不需輪詢。</p>
+<pre><code>dma_channel_config c = dma_channel_get_default_config(ch);
+channel_config_set_transfer_data_size(&amp;c, DMA_SIZE_32);
+channel_config_set_read_increment(&amp;c, true);
+channel_config_set_write_increment(&amp;c, false);   // 目的地是固定 FIFO 位址
+channel_config_set_dreq(&amp;c, pio_get_dreq(pio, sm, true));  // true = TX
+dma_channel_configure(ch, &amp;c, &amp;pio-&gt;txf[sm], buf, n, true);</code></pre>
+<ul>
+<li>對 <code>txf</code> 做 8-bit 寫入時,匯流排會把該位元組複製到 4 個 byte lane。SPI 為左移、閾值 8,取到的是最高 8 位,所以 <code>DMA_SIZE_8</code> 可直接傳 <code>uint8_t</code> 陣列。</li>
+<li>FIFO 只有 4 字,可 join 成 8 字以提高對 DMA 延遲的容忍度。</li>
+</ul>
+</section>
+
+<section id="dshot">
+<h2>7 ESC DSHOT</h2>
+<p>幀 16 bit(MSB 先送):油門 11 bit(48–2047,0 為停止,1–47 為特殊指令)、遙測請求 1 bit、CRC 4 bit。</p>
+<pre><code>static inline uint16_t dshot_frame(uint16_t thr, bool telem) {
+    uint16_t v   = (thr &lt;&lt; 1) | telem;
+    uint16_t crc = (v ^ (v &gt;&gt; 4) ^ (v &gt;&gt; 8)) &amp; 0xF;
+    return (v &lt;&lt; 4) | crc;
+}</code></pre>
+<p>位元波形:<span class="m">t<sub>H</sub>(1)=0.75T</span>,<span class="m">t<sub>H</sub>(0)=0.375T</span>;取 <span class="m">T=8</span> 個 SM 週期,高電位分別為 6 與 3 週期。</p>
+<pre><code>.program dshot
+.side_set 1
+.wrap_target
+bitloop:
+    out x, 1        side 0        ; cyc 0  拉低,autopull;FIFO 空時停在低
+    jmp !x do_zero  side 1 [2]    ; cyc 1-3 拉高並依 bit 分支
+do_one:
+    nop             side 1 [2]    ; cyc 4-6 再高 3 cycles(共 6)
+    jmp bitloop     side 0        ; cyc 7
+do_zero:
+    nop             side 0 [3]    ; cyc 4-7 低 4 cycles(高僅 3)
+.wrap</code></pre>
+<ul>
+<li>兩條路徑皆 8 cycles,bit 週期恆定;<code>out</code> 帶 side 0 放在 bit 開頭,幀與幀之間線路停在低電位。</li>
+<li>設定:<code>sm_config_set_out_shift(&amp;c,false,true,16)</code>,寫入 FIFO 用 <code>frame &lt;&lt; 16</code>。</li>
+<li>DIV(150 MHz):DSHOT150=125、300=62.5、600=31.25、1200=15.625,皆精確。</li>
+<li>4 顆馬達:同區塊 4 個 SM 共用這份 5 條指令,以 <code>pio_enable_sm_mask_in_sync()</code> 同步啟動,再配 DMA 餵 FIFO。</li>
+<li>雙向 DSHOT:極性反相,送完後切成輸入接收 GCR 編碼 eRPM,需另一段接收程式。</li>
+</ul>
+<h3>PIO 是否為 DSHOT 首選</h3>
+<p>在 RP2350 上是:DSHOT 不是 UART / SPI / I²C 格式,內建周邊不在候選;bit-bang 抖動預算只有約 ±0.3 µs(DSHOT600)。其他 MCU 常用 timer + DMA(每 bit 一個 CCR 值,Betaflight 在 STM32 上的做法)。PIO 的優勢:腳位任意、緩衝省、多馬達同步、程式共用。不適合的情況:SM 已用完,或用的是傳統 PWM / OneShot。</p>
+</section>
+
+<section id="value">
+<h2>8 PIO 的價值、內建周邊與 bit-bang</h2>
+<div class="key">PIO = 可程式化的時序硬體。相對<b>軟體 bit-bang</b>,價值在時序由硬體保證;相對<b>內建周邊</b>,價值在於能做出出廠沒有的協定、補足數量、腳位任意。</div>
+<div class="note">更正:先前「省 CPU 只說對了一半」的說法容易被誤解成 PIO 與內建周邊的比較。其實內建周邊同樣由硬體保證時序,且更省 CPU、面積、功耗;PIO 獨有的是彈性,而不是比內建周邊更好。</div>
+<div class="scroll"><table>
+<tr><th>面向</th><th>內建周邊</th><th>PIO</th><th>軟體 bit-bang</th></tr>
+<tr><td>波形由誰產生</td><td>專用硬體 FSM</td><td>可程式化 SM</td><td>CPU 逐條指令</td></tr>
+<tr><td>時序確定性</td><td>高</td><td>高</td><td>受中斷 / 快取 / 匯流排影響</td></tr>
+<tr><td>協定完整度</td><td>完整(FIFO、校驗、流控、仲裁、target 模式)</td><td>多半只做時序層</td><td>自行實作</td></tr>
+<tr><td>腳位</td><td>固定或有限</td><td>幾乎任意</td><td>任意</td></tr>
+<tr><td>數量</td><td>固定(RP2350:2 UART、2 SPI、2 I²C)</td><td>受 12 SM、32 格指令限制</td><td>受 CPU 時間限制</td></tr>
+<tr><td>功耗 / 面積</td><td>最省</td><td>SM 執行時每週期取指令</td><td>佔用核心</td></tr>
+<tr><td>非標準協定</td><td>不行</td><td>可以</td><td>時序嚴格時不行</td></tr>
+</table></div>
+
+<h3>需要 bit-bang 的情況</h3>
+<ul>
+<li>沒有 PIO 的 MCU、PIO 資源用完、腳位已定案無法改接。</li>
+<li>極低速、不在乎時序(按鈕掃描、指示燈),或一次性操作(開機讀一次 EEPROM)。</li>
+<li>異常恢復:I²C 卡死時把 SCL 切成 GPIO 手動打 9 個脈波。</li>
+<li>快速原型與除錯。</li>
+</ul>
+<p>可行條件:<span class="m">σ<sub>jitter</sub>≪</span> 協定時序容忍度。抖動來源:中斷搶佔、XIP Flash 快取未命中(可用 <code>__not_in_flash_func</code> 放進 SRAM)、匯流排競爭。使用內建周邊時不需要 bit-bang(腳位功能是 <code>GPIO_FUNC_SPI</code> 等,互斥於 <code>GPIO_FUNC_SIO</code>);CS 腳、RS-485 方向腳用 GPIO 屬於周邊之外的控制訊號,不算 bit-bang。</p>
+</section>
+
+<section id="choose">
+<h2>9 選擇順序與分工</h2>
+<div class="key"><b>內建周邊 → PIO → 軟體 bit-bang。</b>標準協定、腳位與數量足夠、需要完整功能時用內建周邊;非標準時序、數量不足、腳位受限時用 PIO;最後才是 bit-bang。</div>
+<pre><code>CPU   ← 決策:控制律、濾波、模式管理(複雜但不緊急)
+ │ 寫緩衝區
+DMA   ← 搬運:依 DREQ 餵 FIFO,零 CPU 介入
+ │ FIFO
+PIO   ← 時序:逐 bit 精確產生波形(簡單但嚴格)
+ │
+GPIO / 外部裝置</code></pre>
+<p>PIO 的限制:指令記憶體僅 32 格、沒有內建 CRC 與封包解析、除錯門檻高、12 個 SM 是稀缺資源。對飛控而言,把馬達輸出移出 CPU 可降低控制迴圈的週期抖動,使 PID 微分項 <span class="m">D=K<sub>d</sub>(e<sub>k</sub>-e<sub>k-1</sub>)/Δ t</span> 更穩定。</p>
+<p>實務分配:IMU 與氣壓計用硬體 SPI / I²C,GNSS 與遙控接收機用硬體 UART,DSHOT 與 WS2812 用 PIO,UART 不夠時用 PIO 補位。</p>
+</section>
+
+<section id="todo">
+<h2>10 待對照資料手冊確認</h2>
+<div class="note">以下數值或行為我是憑記憶或一般性推導給出,實作前請以 RP2350 資料手冊與 SDK 原始碼為準。</div>
+<ul>
+<li>內建 SPI(PL022)的最高頻率與最小分頻值。</li>
+<li>PIO 各項細節:輸出仲裁優先順序、<code>GPIOBASE</code> 行為、新增指令的編碼與限制。</li>
+<li>SDK 版 UART / I²C 程式的實際指令內容與週期分配(上文為簡化示意,I²C 32 cycles 為合計數字)。</li>
+<li>DSHOT 判定門檻與 ESC 韌體容忍度(依 ESC 型號而異)。</li>
+</ul>
+</section>
+
+</main>
+</div>
+</body>
+</html>
