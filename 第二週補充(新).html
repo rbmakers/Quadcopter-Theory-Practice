@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>四軸無人機動力學（現代模型與拉格朗日補充）</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MathJax 3 for LaTeX Rendering -->
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #334155;
+            background-color: #f8fafc;
+        }
+        .math-block {
+            overflow-x: auto;
+            padding: 0.5rem 0;
+        }
+    </style>
+</head>
+<body class="leading-relaxed">
+
+    <!-- Header Section -->
+    <header class="bg-slate-900 text-white py-10 px-6 shadow-lg mb-8">
+        <div class="max-w-5xl mx-auto">
+            <div class="inline-block bg-blue-600 text-xs font-semibold px-2.5 py-1 rounded mb-3 tracking-wide uppercase">第二週補充技術文件</div>
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-2">四軸無人機動力學（現代模型與拉格朗日動力學）</h1>
+            <p class="text-slate-400 text-lg">Crazyflie 2.x / RotorPy / PX4 共通架構與理論補充</p>
+            <div class="mt-4 pt-4 border-t border-slate-800 text-xs text-slate-400 flex flex-wrap gap-4">
+                <span>發布日期：August 1, 2026</span>
+                <span>系統版本：CURIO Firmware Ref architecture</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 md:px-6 mb-16">
+        
+        <!-- Summary Box -->
+        <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
+            <h2 class="text-xl font-bold text-slate-900 mb-3 flex items-center">
+                <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                核心摘要
+            </h2>
+            <p class="text-slate-600 mb-3">
+                本文改採現代開源生態系（Bitcraze Crazyflie 2.x 韌體、Kumar Lab RotorPy 模擬器、PX4 飛控韌體）共通採用的動力學建模方式，取代傳統教科書式「12-state 歐拉角」模型。此外，本補充版特別新增 **第 6 章：拉格朗日動力學（Lagrangian Dynamics）** 推導，協助了解變分法視角下的四軸動力學方程，並對比牛頓-歐拉法與拉格朗日法在實際工程上的優劣。
+            </p>
+        </section>
+
+        <!-- TOC -->
+        <nav class="bg-slate-100 p-6 rounded-xl mb-10 border border-slate-200">
+            <h3 class="text-md font-bold text-slate-800 mb-3 uppercase tracking-wider text-xs">目錄 (Table of Contents)</h3>
+            <ol class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm text-slate-700">
+                <li><a href="#sec-1" class="hover:text-blue-600 transition">1. 為什麼要拋棄 Euler 12-state 模型</a></li>
+                <li><a href="#sec-2" class="hover:text-blue-600 transition">2. 座標慣例：三系統的實際差異</a></li>
+                <li><a href="#sec-3" class="hover:text-blue-600 transition">3. 狀態向量（現代定義）</a></li>
+                <li><a href="#sec-4" class="hover:text-blue-600 transition">4. 四元數與旋轉矩陣</a></li>
+                <li><a href="#sec-5" class="hover:text-blue-600 transition">5. 平移動力學 (World Frame)</a></li>
+                <li><a href="#sec-6" class="hover:text-blue-600 transition">6. 剛體旋轉動力學 (Body Frame)</a></li>
+                <li class="font-semibold text-blue-700"><a href="#sec-lagrange" class="hover:text-blue-800 transition">7. 【補充】拉格朗日動力學 (Lagrangian Dynamics)</a></li>
+                <li><a href="#sec-7" class="hover:text-blue-600 transition">8. 致動器動態：現代模型的第二個結構性擴充</a></li>
+                <li><a href="#sec-8" class="hover:text-blue-600 transition">9. 完整現代非線性狀態空間模型彙整</a></li>
+                <li><a href="#sec-9" class="hover:text-blue-600 transition">10. 四元數 ↔ 歐拉角：僅供記錄／視覺化使用</a></li>
+                <li><a href="#sec-10" class="hover:text-blue-600 transition">11. 三系統實作對照表</a></li>
+                <li><a href="#sec-11" class="hover:text-blue-600 transition">12. 對 CURIO 韌體開發的具體意涵</a></li>
+            </ol>
+        </nav>
+
+        <!-- Article Sections -->
+        <article class="space-y-10 text-slate-700">
+
+            <!-- Section 1 -->
+            <section id="sec-1" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">1. 為什麼要拋棄 Euler 12-state 模型</h2>
+                <p class="mb-4">
+                    傳統教科書模型 $X = [x, y, z, \phi, \theta, \psi, \dot{x}, \dot{y}, \dot{z}, p, q, r]^T$ 存在三個現代系統都刻意迴避的問題：
+                </p>
+                <div class="overflow-x-auto mb-4">
+                    <table class="w-full text-left border-collapse border border-slate-200 text-sm">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-800">
+                                <th class="border border-slate-200 p-3 font-semibold">問題</th>
+                                <th class="border border-slate-200 p-3 font-semibold">Euler 12-state 模型</th>
+                                <th class="border border-slate-200 p-3 font-semibold">現代模型的解法</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">姿態奇異點</td>
+                                <td class="border border-slate-200 p-3">$\theta = \pm 90^\circ$ 萬向鎖，$\tan \theta, 1/\cos \theta$ 發散</td>
+                                <td class="border border-slate-200 p-3 font-medium text-blue-700">四元數 $q \in \mathbb{S}^3$ 全域無奇異點</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">積分／估測一致性</td>
+                                <td class="border border-slate-200 p-3">歐拉角速率非線性高、EKF 線性化誤差大</td>
+                                <td class="border border-slate-200 p-3 font-medium text-blue-700">四元數運動學為雙線性，誤差態 EKF 數值極穩定</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">致動器真實性</td>
+                                <td class="border border-slate-200 p-3">假設推力瞬時響應 $F_i = K_f \omega_i^2$</td>
+                                <td class="border border-slate-200 p-3 font-medium text-blue-700">馬達／轉子動態需顯式建模（一階遲滯 + 飽和）</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>
+                    Crazyflie 韌體 (<code>kalman_core.c</code>)、PX4 (<code>AttitudeControl/mc_att_control</code>) 與 RotorPy (<code>Multirotor</code> 類別) 三者的姿態狀態與估測器全部採用四元數，控制器也全部以四元數或旋轉矩陣為基礎，而非歐拉角 PID。這是本文重新整理的動機。
+                </p>
+            </section>
+
+            <!-- Section 2 -->
+            <section id="sec-2" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">2. 座標慣例：三系統的實際差異</h2>
+                <div class="overflow-x-auto mb-4">
+                    <table class="w-full text-left border-collapse border border-slate-200 text-sm">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-800">
+                                <th class="border border-slate-200 p-3 font-semibold">系統</th>
+                                <th class="border border-slate-200 p-3 font-semibold">世界座標系 (World Frame)</th>
+                                <th class="border border-slate-200 p-3 font-semibold">機體座標系 (Body Frame)</th>
+                                <th class="border border-slate-200 p-3 font-semibold">慣例來源</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">PX4</td>
+                                <td class="border border-slate-200 p-3">NED (North-East-Down)</td>
+                                <td class="border border-slate-200 p-3">FRD (Front-Right-Down)</td>
+                                <td class="border border-slate-200 p-3">航太傳統慣例，docs.px4.io</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">Crazyflie 2.x</td>
+                                <td class="border border-slate-200 p-3">ENU 變體 (Z 向上)</td>
+                                <td class="border border-slate-200 p-3">FLU 近似 (X 前、Z 上)</td>
+                                <td class="border border-slate-200 p-3">Bitcraze 韌體 kalman_core.c</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">RotorPy</td>
+                                <td class="border border-slate-200 p-3">ENU (Z 向上)</td>
+                                <td class="border border-slate-200 p-3">FLU</td>
+                                <td class="border border-slate-200 p-3">Kumar Robotics 慣例</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>
+                    本文採 **ENU / FLU** 統一表述（世界 Z 向上、機體 X 前、Z 上）。若需與 PX4 對接，僅需將 $Z \to -Z$、對應力矩／速度分量變號即可，核心數學結構完全不變。
+                </p>
+            </section>
+
+            <!-- Section 3 -->
+            <section id="sec-3" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">3. 狀態向量（現代定義）</h2>
+                <p class="mb-3">三系統的核心狀態高度一致，可歸納為：</p>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4">
+                    $$x = (p \in \mathbb{R}^3, v \in \mathbb{R}^3, q \in \mathbb{S}^3, \omega \in \mathbb{R}^3)$$
+                </div>
+                <div class="overflow-x-auto my-4">
+                    <table class="w-full text-left border-collapse border border-slate-200 text-sm">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-800">
+                                <th class="border border-slate-200 p-3 font-semibold">分量</th>
+                                <th class="border border-slate-200 p-3 font-semibold">物理意義</th>
+                                <th class="border border-slate-200 p-3 font-semibold">座標系</th>
+                                <th class="border border-slate-200 p-3 font-semibold">對應 (Crazyflie / RotorPy / PX4)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-mono">$p = (x, y, z)$</td>
+                                <td class="border border-slate-200 p-3">位置</td>
+                                <td class="border border-slate-200 p-3">世界系</td>
+                                <td class="border border-slate-200 p-3">KC_STATE_X/Y/Z | state['x'] | local_position</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-mono">$v = (v_x, v_y, v_z)$</td>
+                                <td class="border border-slate-200 p-3">世界座標系線速度</td>
+                                <td class="border border-slate-200 p-3">世界系</td>
+                                <td class="border border-slate-200 p-3">KC_STATE_PX/PY/PZ | state['v'] | local_position.vx..</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-mono">$q$</td>
+                                <td class="border border-slate-200 p-3">姿態四元數 (機體 $\to$ 世界)</td>
+                                <td class="border border-slate-200 p-3">單位四元數</td>
+                                <td class="border border-slate-200 p-3">增量四元數 | state['q'] | vehicle_attitude.q</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-mono">$\omega = (p, q_r, r)$</td>
+                                <td class="border border-slate-200 p-3">機體角速度（陀螺儀直接輸出）</td>
+                                <td class="border border-slate-200 p-3">機體系</td>
+                                <td class="border border-slate-200 p-3">gyro | state['w'] | vehicle_angular_velocity</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>RotorPy 額外把馬達轉速也放進狀態：</p>
+                <div class="math-block bg-slate-50 p-3 rounded-lg border border-slate-200 text-center my-2">
+                    $$x_{\text{RotorPy}} = (p, v, q, \omega, \Omega_{\text{motor}} \in \mathbb{R}^4)$$
+                </div>
+            </section>
+
+            <!-- Section 4 -->
+            <section id="sec-4" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">4. 四元數與旋轉矩陣</h2>
+                <h3 class="text-lg font-bold text-slate-800 mt-4 mb-2">4.1 四元數定義與姿態表示</h3>
+                <p>採 Hamilton 慣例，單位四元數 $q = q_w + q_x i + q_y j + q_z k, \, \|q\| = 1$ 代表機體座標系到世界座標系的旋轉。</p>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4 overflow-x-auto">
+                    $$R(q) = \begin{bmatrix} 1-2(q_y^2+q_z^2) & 2(q_x q_y - q_w q_z) & 2(q_x q_z + q_w q_y) \\ 2(q_x q_y + q_w q_z) & 1-2(q_x^2+q_z^2) & 2(q_y q_z - q_w q_x) \\ 2(q_x q_z - q_w q_y) & 2(q_y q_z + q_w q_x) & 1-2(q_x^2+q_y^2) \end{bmatrix}$$
+                </div>
+
+                <h3 class="text-lg font-bold text-slate-800 mt-6 mb-2">4.2 四元數運動學方程</h3>
+                <p>機體角速度 $\omega = (p, q_r, r)$ 驅動四元數變化：</p>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4">
+                    $$\dot{q} = \frac{1}{2} q \otimes \begin{bmatrix} 0 \\ \omega \end{bmatrix} = \frac{1}{2} \begin{bmatrix} 0 & -p & -q_r & -r \\ p & 0 & r & -q_r \\ q_r & -r & 0 & p \\ r & q_r & -p & 0 \end{bmatrix} q = \frac{1}{2} \Omega(\omega) q$$
+                </div>
+            </section>
+
+            <!-- Section 5 -->
+            <section id="sec-5" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">5. 平移動力學 (World Frame)</h2>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4">
+                    $$\dot{p} = v$$
+                    $$\dot{v} = -g e_3 + \frac{F_{\text{total}}}{m} R(q) e_3 - \frac{1}{m} f_{\text{drag}}$$
+                </div>
+                <p class="text-sm text-slate-600 mb-2">其中 $e_3 = (0, 0, 1)^T$，$F_{\text{total}} = \sum_i F_i$。空氣阻力採用旋翼阻力（Rotor Drag）模型：</p>
+                <div class="math-block bg-slate-50 p-3 rounded-lg border border-slate-200 text-center my-2">
+                    $$f_{\text{drag}} \approx R(q) D R(q)^T v$$
+                </div>
+            </section>
+
+            <!-- Section 6 -->
+            <section id="sec-6" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">6. 剛體旋轉動力學 (Body Frame)</h2>
+                <p class="mb-3">
+                    Euler 剛體方程本身不因改用四元數而改變：四元數改變的是姿態運動學，角速度隨力矩變化的動力學仍為：
+                </p>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4">
+                    $$J \dot{\omega} = \tau - \omega \times (J \omega)$$
+                </div>
+                <p class="text-sm text-slate-600 mb-2">分量展開（設機體對稱對角慣性矩 $J = \text{diag}(J_{xx}, J_{yy}, J_{zz})$，且用 $q_r$ 表示 pitch 角速度）：</p>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4">
+                    $$\dot{p} = \frac{\tau_x + (J_{yy} - J_{zz}) q_r r}{J_{xx}}, \quad \dot{q}_r = \frac{\tau_y + (J_{zz} - J_{xx}) p r}{J_{yy}}, \quad \dot{r} = \frac{\tau_z + (J_{xx} - J_{yy}) p q_r}{J_{zz}}$$
+                </div>
+            </section>
+
+            <!-- SECTION LAGRANGE (NEW ADDITION) -->
+            <section id="sec-lagrange" class="bg-blue-50/50 p-6 md:p-8 rounded-xl border border-blue-200 shadow-sm">
+                <div class="flex items-center space-x-2 mb-3">
+                    <span class="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded">重點補充</span>
+                    <h2 class="text-2xl font-bold text-slate-900">7. 拉格朗日動力學 (Lagrangian Dynamics)</h2>
+                </div>
+                <p class="mb-4">
+                    除了牛頓-歐拉法（Newton-Euler Formulation）外，利用解析力學的 **拉格朗日法（Lagrangian Formulation）** 能從能量守恆與變分原理出發推導系統方程。這在分析多體系統（如掛載關節手臂的無人機）或做分析解推導時極具價值。
+                </p>
+
+                <h3 class="text-lg font-bold text-slate-800 mt-6 mb-2">7.1 廣義座標與拉格朗日量 (Lagrangian)</h3>
+                <p class="mb-2">選定廣義座標向量 $\mathbf{q}_{\text{gen}} = [x, y, z, \phi, \theta, \psi]^T = [\mathbf{r}^T, \boldsymbol{\eta}^T]^T$。系統拉格朗日量定義為總動能 $T$ 與總勢能 $V$ 之差：</p>
+                <div class="math-block bg-white p-4 rounded-lg border border-blue-100 text-center my-4">
+                    $$\mathcal{L}(\mathbf{q}_{\text{gen}}, \dot{\mathbf{q}}_{\text{gen}}) = T - V = T_{\text{trans}} + T_{\text{rot}} - V$$
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
+                    <div class="bg-white p-4 rounded-lg border border-blue-100">
+                        <div class="text-xs font-bold text-slate-500 uppercase">平移動能</div>
+                        <div class="text-sm mt-1">$T_{\text{trans}} = \frac{1}{2} m \dot{\mathbf{r}}^T \dot{\mathbf{r}} = \frac{1}{2} m (\dot{x}^2 + \dot{y}^2 + \dot{z}^2)$</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg border border-blue-100">
+                        <div class="text-xs font-bold text-slate-500 uppercase">旋轉動能</div>
+                        <div class="text-sm mt-1">$T_{\text{rot}} = \frac{1}{2} \boldsymbol{\omega}^T J \boldsymbol{\omega} = \frac{1}{2} \dot{\boldsymbol{\eta}}^T W^T J W \dot{\boldsymbol{\eta}}$</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg border border-blue-100">
+                        <div class="text-xs font-bold text-slate-500 uppercase">重力勢能</div>
+                        <div class="text-sm mt-1">$V = m g z$</div>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-500 mb-4">注：$W(\boldsymbol{\eta})$ 為歐拉角速率映射至機體角速度的變換矩陣，使得 $\boldsymbol{\omega} = W(\boldsymbol{\eta}) \dot{\boldsymbol{\eta}}$。</p>
+
+                <h3 class="text-lg font-bold text-slate-800 mt-6 mb-2">7.2 歐拉-拉格朗日方程推導 (Euler-Lagrange Equation)</h3>
+                <p class="mb-2">包含非保守力（推力與阻力矩）的歐拉-拉格朗日方程為：</p>
+                <div class="math-block bg-white p-4 rounded-lg border border-blue-100 text-center my-4">
+                    $$\frac{d}{dt} \left( \frac{\partial \mathcal{L}}{\partial \dot{\mathbf{q}}_{\text{gen}}} \right) - \frac{\partial \mathcal{L}}{\partial \mathbf{q}_{\text{gen}}} = \mathbf{Q}$$
+                </div>
+                <p class="text-sm mb-4">其中 $\mathbf{Q} = [\mathbf{F}_{\text{ext}}^T, \boldsymbol{\tau}_{\text{ext}}^T]^T$ 為廣義外力與外力矩。</p>
+
+                <div class="space-y-4">
+                    <div class="bg-white p-4 rounded-lg border border-blue-100">
+                        <h4 class="font-bold text-slate-800 text-sm mb-1">1. 平移動力學部分（對 $\mathbf{r} = [x, y, z]^T$ 求偏導）</h4>
+                        <p class="text-sm mb-2">由於 $\frac{\partial \mathcal{L}}{\partial \mathbf{r}} = [0, 0, -mg]^T$，且 $\frac{\partial \mathcal{L}}{\partial \dot{\mathbf{r}}} = m \dot{\mathbf{r}}$：</p>
+                        <div class="math-block text-center text-sm">
+                            $$\frac{d}{dt}(m \dot{\mathbf{r}}) - \begin{bmatrix} 0 \\ 0 \\ -mg \end{bmatrix} = \mathbf{F}_{\text{thrust\_world}} \implies m \ddot{\mathbf{r}} + \begin{bmatrix} 0 \\ 0 \\ mg \end{bmatrix} = R(\boldsymbol{\eta}) \begin{bmatrix} 0 \\ 0 \\ U_1 \end{bmatrix}$$
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-lg border border-blue-100">
+                        <h4 class="font-bold text-slate-800 text-sm mb-1">2. 姿態動力學部分（對 $\boldsymbol{\eta} = [\phi, \theta, \psi]^T$ 求偏導）</h4>
+                        <p class="text-sm mb-2">令姿態慣性矩陣 $M(\boldsymbol{\eta}) = W(\boldsymbol{\eta})^T J W(\boldsymbol{\eta})$，代入拉格朗日方程可得：</p>
+                        <div class="math-block text-center text-sm">
+                            $$M(\boldsymbol{\eta}) \ddot{\boldsymbol{\eta}} + C(\boldsymbol{\eta}, \dot{\boldsymbol{\eta}}) \dot{\boldsymbol{\eta}} = \boldsymbol{\tau}_{\text{euler}}$$
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">其中 $C(\boldsymbol{\eta}, \dot{\boldsymbol{\eta}})$ 為哥氏力與離心力矩陣（Coriolis & Centrifugal Matrix）。</p>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-bold text-slate-800 mt-6 mb-2">7.3 牛頓-歐拉法 vs. 拉格朗日法 對照表</h3>
+                <div class="overflow-x-auto my-4">
+                    <table class="w-full text-left border-collapse border border-blue-200 text-sm bg-white">
+                        <thead>
+                            <tr class="bg-blue-100/70 text-slate-800">
+                                <th class="border border-blue-200 p-3 font-semibold">比較項目</th>
+                                <th class="border border-blue-200 p-3 font-semibold">牛頓-歐拉法 (Newton-Euler)</th>
+                                <th class="border border-blue-200 p-3 font-semibold">拉格朗日法 (Lagrangian)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="hover:bg-blue-50/30">
+                                <td class="border border-blue-200 p-3 font-medium">出發點</td>
+                                <td class="border border-blue-200 p-3">受力與力矩平衡（Vector Mechanics）</td>
+                                <td class="border border-blue-200 p-3">能量（動能 - 勢能）與變分原理（Analytical Mechanics）</td>
+                            </tr>
+                            <tr class="hover:bg-blue-50/30">
+                                <td class="border border-blue-200 p-3 font-medium">四元數相容性</td>
+                                <td class="border border-blue-200 p-3 text-emerald-700 font-medium">高（角速度 $\boldsymbol{\omega}$ 獨立於姿態參數化）</td>
+                                <td class="border border-blue-200 p-3 text-amber-700 font-medium">較難（四元數有單位範數約束 $\|q\|=1$，需使用拉格朗日乘子）</td>
+                            </tr>
+                            <tr class="hover:bg-blue-50/30">
+                                <td class="border border-blue-200 p-3 font-medium">計算複雜度</td>
+                                <td class="border border-blue-200 p-3">低（極適合飛控韌體即時計算，如 PX4/Crazyflie）</td>
+                                <td class="border border-blue-200 p-3">高（包含複雜符號微分與 $C(\boldsymbol{\eta},\dot{\boldsymbol{\eta}})$ 矩陣）</td>
+                            </tr>
+                            <tr class="hover:bg-blue-50/30">
+                                <td class="border border-blue-200 p-3 font-medium">主要應用場景</td>
+                                <td class="border border-blue-200 p-3">飛控狀態估測（EKF）、實時控制（SE(3) Control）</td>
+                                <td class="border border-blue-200 p-3">系統理論分析、多連桿/機械臂機動（Aerial Manipulation）</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section 7 (8) -->
+            <section id="sec-7" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">8. 致動器動態：現代模型的第二個結構性擴充</h2>
+                <p class="mb-3">
+                    教科書模型假設 $F_i = K_f \omega_i^2$ 瞬時成立。真實 ESC + 無刷馬達存在電氣時間常數與機械慣量，RotorPy 論文明確將其列為模型的一部分：
+                </p>
+                
+                <h3 class="text-md font-bold text-slate-800 mt-4 mb-2">8.1 轉子轉速作為狀態（一階遲滯模型）</h3>
+                <div class="math-block bg-slate-50 p-3 rounded-lg border border-slate-200 text-center my-2">
+                    $$\dot{\Omega}_i = \frac{\Omega_{i,\text{cmd}} - \Omega_i}{\tau_m}, \quad i = 1, \dots, 4$$
+                </div>
+                <p class="text-sm text-slate-600 mb-4">$\tau_m$ 為馬達時間常數（小型無刷馬達通常在數十毫秒等級）。</p>
+
+                <h3 class="text-md font-bold text-slate-800 mt-4 mb-2">8.2 轉速力／力矩與 Mixer</h3>
+                <div class="math-block bg-slate-50 p-3 rounded-lg border border-slate-200 text-center my-2">
+                    $$F_i = K_f \Omega_i^2, \quad M_i = K_m \Omega_i^2$$
+                </div>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4 overflow-x-auto">
+                    $$\begin{bmatrix} F_{\text{total}} \\ \tau_x \\ \tau_y \\ \tau_z \end{bmatrix} = \begin{bmatrix} 1 & 1 & 1 & 1 \\ 0 & L & 0 & -L \\ -L & 0 & L & 0 \\ \kappa & -\kappa & \kappa & -\kappa \end{bmatrix} \begin{bmatrix} F_1 \\ F_2 \\ F_3 \\ F_4 \end{bmatrix}, \quad \kappa = \frac{K_m}{K_f}$$
+                </div>
+            </section>
+
+            <!-- Section 8 (9) -->
+            <section id="sec-8" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">9. 完整現代非線性狀態空間模型彙整</h2>
+                <div class="math-block bg-slate-900 text-slate-100 p-6 rounded-xl my-4 text-sm font-mono leading-relaxed overflow-x-auto">
+                    $$\dot{p} = v$$
+                    $$\dot{v} = -g e_3 + \frac{F_{\text{total}}}{m} R(q) e_3 - \frac{1}{m} R(q) D R(q)^T v$$
+                    $$\dot{q} = \frac{1}{2} \Omega(\omega) q, \quad \|q\| = 1$$
+                    $$J \dot{\omega} = \tau - \omega \times (J \omega)$$
+                    $$\dot{\Omega}_i = \frac{\Omega_{i,\text{cmd}} - \Omega_i}{\tau_m}, \quad i = 1, \dots, 4$$
+                    $$F_i = K_f \Omega_i^2, \quad M_i = K_m \Omega_i^2 \xrightarrow{\text{Mixer}} F_{\text{total}}, \tau$$
+                </div>
+                <p class="text-sm text-slate-600 mt-2">
+                    狀態總維度：$3(p) + 3(v) + 4(q) + 3(\omega) + 4(\Omega_i) = 17$（含 1 個四元數範數約束，實質自由度 16），對照教科書模型的 12 維。
+                </p>
+            </section>
+
+            <!-- Section 9 (10) -->
+            <section id="sec-9" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">10. 四元數 ↔ 歐拉角：僅供記錄／視覺化使用</h2>
+                <div class="math-block bg-slate-50 p-4 rounded-lg border border-slate-200 text-center my-4 overflow-x-auto">
+                    $$\phi = \text{atan2}(2(q_w q_x + q_y q_z), 1 - 2(q_x^2 + q_y^2))$$
+                    $$\theta = \arcsin(2(q_w q_y - q_z q_x))$$
+                    $$\psi = \text{atan2}(2(q_w q_z + q_x q_y), 1 - 2(q_y^2 + q_z^2))$$
+                </div>
+            </section>
+
+            <!-- Section 10 (11) -->
+            <section id="sec-10" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">11. 三系統實作對照表</h2>
+                <div class="overflow-x-auto mb-4">
+                    <table class="w-full text-left border-collapse border border-slate-200 text-sm">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-800">
+                                <th class="border border-slate-200 p-3 font-semibold">項目</th>
+                                <th class="border border-slate-200 p-3 font-semibold">Crazyflie 2.x</th>
+                                <th class="border border-slate-200 p-3 font-semibold">RotorPy</th>
+                                <th class="border border-slate-200 p-3 font-semibold">PX4</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">姿態估測</td>
+                                <td class="border border-slate-200 p-3">EKF/UKF，四元數狀態 (kalman_core.c)</td>
+                                <td class="border border-slate-200 p-3">無需估測（模擬器直接輸出真值）</td>
+                                <td class="border border-slate-200 p-3">EKF2，四元數狀態</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">姿態控制器</td>
+                                <td class="border border-slate-200 p-3">PID / Mellinger / INDI / Brescianini / Lee</td>
+                                <td class="border border-slate-200 p-3">SE3Control（Lee et al. 幾何控制器）</td>
+                                <td class="border border-slate-200 p-3">基於 Brescianini et al. 四元數非線性姿態控制</td>
+                            </tr>
+                            <tr class="hover:bg-slate-50">
+                                <td class="border border-slate-200 p-3 font-medium">致動器建模</td>
+                                <td class="border border-slate-200 p-3">硬體 ESC + 無刷馬達（韌體做 PWM/電池補償）</td>
+                                <td class="border border-slate-200 p-3">顯式一階馬達動態 + 飽和</td>
+                                <td class="border border-slate-200 p-3">SITL 模擬含馬達模型，實機由 ESC 處理</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section 11 (12) -->
+            <section id="sec-11" class="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                <h2 class="text-2xl font-bold text-slate-900 border-b pb-3 mb-4">12. 對 CURIO 韌體開發的具體意涵</h2>
+                <ol class="list-decimal list-inside space-y-3">
+                    <li class="pl-2"><span class="font-bold text-slate-800">姿態估測 / EKF：</span>採 Error-State EKF (Solà 2017) 在數值穩定性與 Jacobian 簡潔度上皆顯著優於歐拉角 EKF。</li>
+                    <li class="pl-2"><span class="font-bold text-slate-800">姿態控制器：</span>CURIO4 路線對齊 SE(3) 幾何控制器，可在大角度機動下解決歐拉角控制器的限制。</li>
+                    <li class="pl-2"><span class="font-bold text-slate-800">致動器動態納入模型：</span>將 $\tau_m$ 顯式分離能提供明確物理意義，改善 Bode/TPA 與濾波器截止頻率設計。</li>
+                    <li class="pl-2"><span class="font-bold text-slate-800">拉格朗日法的理論補充：</span>後續若開發搭載關節機械臂之飛行器（Aerial Manipulator），可基於第 7 節之拉格朗日架構擴充動能項。</li>
+                </ol>
+            </section>
+
+            <!-- References -->
+            <section class="bg-slate-100 p-6 md:p-8 rounded-xl border border-slate-200">
+                <h2 class="text-xl font-bold text-slate-900 border-b border-slate-300 pb-3 mb-4">參考文獻</h2>
+                <ul class="list-disc list-inside space-y-2 text-sm text-slate-600 font-mono">
+                    <li>S. Folk, J. Paulos, V. Kumar, "RotorPy: A Python-based Multirotor Simulator with Aerodynamics," ICRA Workshop, 2023.</li>
+                    <li>Bitcraze AB, crazyflie-firmware 原始碼, kalman_core.c / stabilizer.c.</li>
+                    <li>D. Brescianini, M. Hehn, R. D'Andrea, "Nonlinear Quadrocopter Attitude Control," Technical Report, ETH Zürich, 2013.</li>
+                    <li>J. Solà, "Quaternion Kinematics for the Error-State Kalman Filter," arXiv:1711.02508, 2017.</li>
+                    <li>T. Lee, M. Leok, N. H. McClamroch, "Geometric Tracking Control of a Quadrotor UAV on SE(3)," CDC, 2010.</li>
+                </ul>
+            </section>
+
+        </article>
+
+    </main>
+
+    <footer class="bg-slate-900 text-slate-500 text-center py-6 border-t border-slate-800 text-sm">
+        <p>© 2026 CURIO Dynamics Team. Generated with MathJax & Tailwind CSS.</p>
+    </footer>
+
+</body>
+</html>
